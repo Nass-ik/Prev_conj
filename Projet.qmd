@@ -224,7 +224,7 @@ debut_y <- prev_sts$mean[1]
 lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue", lwd = 2)
 ```
 
-# (ii) les méthodes de lissage exponentiel : Holt-Winters, ETS, TBATS, ADAM ETS, ADAM ETS SARIMA et SSARIMA.
+# (ii) les méthodes de lissage exponentiel : Holt-Winters, ETS, TBATS, ADAM ETS, ADAM ETS SARIMA.
 ## Holt-Winters (multiplicatif ici car démontré dans la Partie 1)
 ```{r}
 prev_hw <- hw(serie_adj, h = 12, seasonal = "multiplicative")
@@ -245,22 +245,128 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 ## ETS
 ```{r}
+fit_ets <- ets(serie_adj)
+summary(fit_ets) 
 
+prev_ets <- forecast(fit_ets, h = 12)
+
+plot(prev_ets, 
+     main = "Prévision : Méthode ETS", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# anti-trou
+fin_x <- time(serie_adj)[length(serie_adj)]
+fin_y <- serie_adj[length(serie_adj)]
+debut_x <- time(prev_ets$mean)[1]
+debut_y <- prev_ets$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 ```
 
 ## TBATS
 ```{r}
+fit_tbats <- tbats(serie_adj)
+print(fit_tbats) 
 
+prev_tbats <- forecast(fit_tbats, h = 12)
+
+plot(prev_tbats, 
+     main = "Prévision : Méthode TBATS", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou
+debut_x <- time(prev_tbats$mean)[1]
+debut_y <- prev_tbats$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 ```
 
 ## ADAM ETS
 ```{r}
+fit_adam1 <- auto.adam(serie_adj, model="MAdA", lags=c(1,12), select=TRUE)
+summary(fit_adam1)
 
+prev_adam1 <- forecast(fit_adam1, h = 12)
+
+plot(prev_adam1, 
+     main = "Prévision : ADAM ETS", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou
+debut_x <- time(prev_adam1$mean)[1]
+debut_y <- prev_adam1$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 ```
 
 ## ADAM ETS SARIMA
 ```{r}
+fit_adam2 <- auto.adam(serie_adj, model="MAdA", lags=c(1,12), 
+                       orders=list(ar=c(3,3), i=c(2), ma=c(3,3)),
+                       select=TRUE)
+summary(fit_adam2)
 
+# Prévision 
+prev_adam2 <- forecast(fit_adam2, h=12, level = 0.90)
+
+plot(prev_adam2, 
+     main = "Prévision : ADAM ETS SARIMA", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou
+debut_x <- time(prev_adam2$mean)[1]
+debut_y <- prev_adam2$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 ```
 
+# (iii) les modèles SARIMA(p,d,q)(P,D,Q)12 et SSARIMA.
+
 ## SSARIMA
+```{r}
+# Modèle SSARIMA (State Space ARIMA)
+fit_ssarima <- auto.ssarima(serie_adj, lags=c(1,12), 
+                            orders=list(ar=c(3,3), i=c(2), ma=c(3,3)), 
+                            select=TRUE)
+summary(fit_ssarima)
+
+# Prévision 
+prev_ssarima <- forecast(fit_ssarima, h=12, level = 0.90)
+
+plot(prev_ssarima, 
+     main = "Prévision : SSARIMA", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou
+debut_x <- time(prev_ssarima$mean)[1]
+debut_y <- prev_ssarima$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
+```
+
+## SARIMA(p,d,q)(P,D,Q)12 
+```{r}
+# 1. Recherche automatique du meilleur modèle SARIMA
+fit_sarima <- auto.arima(serie_adj)
+
+# 2. Affichage des paramètres trouvés par l'algorithme
+print("Résumé du modèle SARIMA")
+summary(fit_sarima)
+
+# 3. Prévision sur 12 mois
+prev_sarima <- forecast(fit_sarima, h = 12)
+
+# 4. Graphique
+plot(prev_sarima, 
+     main = "Prévision : Modèle SARIMA", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou 
+fin_x <- time(serie_adj)[length(serie_adj)]
+fin_y <- serie_adj[length(serie_adj)]
+debut_x <- time(prev_sarima$mean)[1]
+debut_y <- prev_sarima$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
+```
+
