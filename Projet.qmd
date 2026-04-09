@@ -2,7 +2,7 @@
 title: "Projet"
 ---
 
-# Analyse exploratoir
+# Analyse exploratoire
 
 ```{r}
 library(readr)
