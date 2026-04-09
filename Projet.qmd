@@ -1,0 +1,266 @@
+---
+title: "Projet"
+---
+
+# Analyse exploratoir
+
+```{r}
+library(readr)
+library(dplyr)    
+library(tsoutliers)
+library(RJDemetra)  
+library(forecast)   
+library(smooth)
+library(tsoutliers)
+MRTSSM4453USN <- read_csv("MRTSSM4453USN.csv")
+View(MRTSSM4453USN)
+```
+
+ici on va donc filtrer sur 20 ans comme dit dans le guide (20ans max) car la nous avons une plage de 34 ans ce qui est trop
+```{r}
+# Filtrage exact sur 20 ans (Janvier 2006 à Décembre 2025)
+df_clean <- MRTSSM4453USN |> 
+  mutate(observation_date = as.Date(observation_date)) |> 
+  arrange(observation_date) |>                             
+  filter(observation_date >= as.Date("2006-01-01") & 
+         observation_date <= as.Date("2025-12-31"))
+
+serie_ts <- ts(df_clean$MRTSSM4453USN, start = c(2006, 1), frequency = 12)
+
+# Affichage du graphique 
+plot(serie_ts, 
+     main = "Ventes de boissons alcoolisées aux US (2006-2025)", 
+     ylab = "Millions de dollars", 
+     xlab = "Année",
+     col = "darkblue",
+     lwd = 2)
+```
+
+```{r}
+# Distribution, ACF et PACF (très utile pour justifier les futurs modèles ARIMA)
+ggtsdisplay(serie_ts, plot.type = "histogram", 
+            main = "Distribution et Autocorrélations - Ventes d'Alcool")
+```
+
+```{r}
+# Effets saisonniers (permet de bien voir le pic de décembre !)
+ggseasonplot(serie_ts, col = rainbow(20), year.labels = TRUE, 
+             main = "Graphique Saisonnier des Ventes d'Alcool")
+```
+
+## 1) b) Détection des points atypiques 
+On lance la détection avec le package tsoutliers
+```{r}
+fit_outliers <- tso(serie_ts, types = c("AO", "LS", "TC"))
+```
+
+Graphique de la série avec les points atypiques en rouge
+```{r}
+plot(fit_outliers)
+```
+
+Affichage du tableau des outliers (date, type, t-stat)
+```{r}
+print(fit_outliers$outliers)
+```
+
+Création de la série corrigée des valeurs atypiques (à utiliser pour toute la suite !)
+```{r}
+serie_adj <- fit_outliers$yadj
+```
+
+```{r}
+#| label: tbl-outliers
+#| tbl-cap: "Détection des principaux points atypiques"
+
+library(knitr)
+
+# Création du tableau de données
+tableau_outliers <- data.frame(
+  Date = c("Mars 2020", "Janvier 2025", "Mai 2020"),
+  Type_de_point = c("LS (Level Shift)", "LS (Level Shift)", "LS (Level Shift)"),
+  T_stat = c(7.917, -5.610, 5.576)
+)
+
+# Affichage 
+kable(tableau_outliers, col.names = c("Date", "Type de point", "T-stat"))
+```
+
+1. Mars 2020 (Changement de niveau positif très fort)
+
+Explication : C'est le déclenchement de la pandémie de COVID-19 aux États-Unis. La mise en place des confinements a forcé la fermeture brutale des bars, pubs et restaurants (le secteur "On-Trade"). En conséquence, les consommateurs ont massivement reporté leurs achats d'alcool vers les magasins de détail et supermarchés (le secteur "Off-Trade") pour consommer à domicile. C'est un choc structurel (Level Shift) car cette habitude de consommation à domicile a perduré.
+
+2. Janvier 2025 (Changement de niveau négatif fort)
+
+Explication : Ce choc négatif récent peut s'expliquer par un effet de ciseaux : la normalisation définitive des comportements post-COVID (retour total dans les bars/restaurants) combinée à un fort arbitrage budgétaire des ménages américains. Face à l'inflation persistante sur les années précédentes et l'épuisement de l'épargne COVID, les consommateurs ont drastiquement réduit leurs dépenses discrétionnaires (non essentielles) en magasin. On peut aussi y voir l'amplification d'effets sociétaux comme le "Dry January" qui prend de plus en plus d'ampleur économiquement.
+
+3. Mai 2020 (Changement de niveau positif)
+
+Explication : Ce second palier consolide le choc de mars. Il correspond à l'arrivée massive des chèques de relance américains (les fameux Stimulus Checks du CARES Act) dans le portefeuille des ménages. Ce pouvoir d'achat supplémentaire, combiné à l'impossibilité de dépenser dans les loisirs extérieurs à l'approche de l'été, a provoqué une nouvelle marche à la hausse des ventes d'alcool au détail.
+
+## 1) c) Statistiques descriptives sur la série corrigée
+```{r}
+library(fBasics)
+library(tibble)
+library(ggplot2)
+```
+
+Calcul des statistiques descriptives complètes
+On utilise serie_adj (la série sans les outliers générée à la question précédente)
+```{r}
+statistiques <- basicStats(serie_adj)
+print(statistiques)
+```
+
+Création du Box-plot de la série corrigée
+```{r}
+df_box <- tibble(value = as.numeric(serie_adj))
+
+ggplot(df_box, aes(y = value)) +
+  geom_boxplot(fill = "royalblue", alpha = 0.5, outlier.color = "red") +
+  labs(title = "Boxplot de la série corrigée (Ventes d'alcool)", 
+       y = "Millions de dollars") +
+  theme_minimal()
+```
+
+## 1) d) Détection de la saisonnalité et schéma de décomposition
+```{r}
+library(TSA)
+library(RJDemetra)
+```
+
+Création de la série en différence première (pour éliminer la tendance)
+```{r}
+d_serie_adj <- diff(serie_adj, differences = 1)
+```
+
+1. Tracé des Périodogrammes
+```{r}
+par(mfrow=c(1,2))
+periodogram(serie_adj, main="Périodogramme (en niveau)")
+periodogram(d_serie_adj, main="Périodogramme (différence 1ère)")
+par(mfrow=c(1,1))
+```
+
+2. test de saisonnalité 
+```{r}
+myregx13 <- regarima_x13(serie_adj, spec ="RG5c")
+summary(myregx13)
+s_transform(myregx13)
+plot(myregx13)
+```
+
+## 1) e) Désaisonnaliser et décomposer la série (X13-ARIMA-SEATS)
+On utilise la spécification "RSA5c" (modèle complet avec détection automatique)
+```{r}
+myspec <- x13_spec("RSA5c")
+mysax13 <- x13(serie_adj, myspec)
+summary(mysax13$regarima)
+plot(mysax13$final)
+```
+
+# 2) a) (i) Prévisions : Naïve, X13, STL, STS
+On définit l'horizon de prévision : 12 mois
+```{r}
+h_prev <- 12
+```
+
+## 1. Méthode Naïve 
+```{r}
+prev_naive <- naive(serie_adj, h = h_prev)
+plot(prev_naive, main = "Prévision : Méthode Naïve", 
+     ylab = "Millions de dollars", xlab = "Année")
+```
+
+## 2. X13-SARIMA-SEATS
+```{r}
+prev_x13 <- myregx13$forecast
+myregx13$model$effects
+print("Prévisions X13-SARIMA-SEATS :")
+print(prev_x13)
+```
+
+on extrait donc simplement les 12 premières lignes 
+```{r}
+prev_x13_12mois <- head(myregx13$forecast, 12)
+print(prev_x13_12mois)
+```
+
+## 3. Méthode STL
+```{r}
+fit_stl <- stlm(serie_adj)
+prev_stl <- forecast(fit_stl, h = h_prev)
+plot(prev_stl, main = "Prévision : Méthode STL", 
+     ylab = "Millions de dollars", xlab = "Année")
+```
+
+
+## 4. Méthode STS
+```{r}
+fitsts <- StructTS(serie_adj)
+
+# Graphique de la série ajustée et des résidus 
+plot(cbind(fitted(fitsts), residuals(fitsts)), 
+     main = "Modèle STS : Ajustement et Résidus")
+
+# Affichage des paramètres du modèle 
+print(" Variances du modèle STS ")
+show(fitsts)
+
+# Génération de la prévision
+fitsts <- StructTS(serie_adj)
+prev_sts <- forecast(fitsts, h=12) 
+
+# Tracer le graphique de base (avec le trou)
+plot(prev_sts, 
+     main = "Prévision : Méthode STS", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+fin_x <- time(serie_adj)[length(serie_adj)]
+fin_y <- serie_adj[length(serie_adj)]
+debut_x <- time(prev_sts$mean)[1]
+debut_y <- prev_sts$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue", lwd = 2)
+```
+
+# (ii) les méthodes de lissage exponentiel : Holt-Winters, ETS, TBATS, ADAM ETS, ADAM ETS SARIMA et SSARIMA.
+## Holt-Winters (multiplicatif ici car démontré dans la Partie 1)
+```{r}
+prev_hw <- hw(serie_adj, h = 12, seasonal = "multiplicative")
+
+# 2. On trace le graphique
+plot(prev_hw, 
+     main = "Prévision : Holt-Winters Multiplicatif", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+fin_x <- time(serie_adj)[length(serie_adj)]
+fin_y <- serie_adj[length(serie_adj)]
+debut_x <- time(prev_hw$mean)[1]
+debut_y <- prev_hw$mean[1]
+
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
+```
+
+## ETS
+```{r}
+
+```
+
+## TBATS
+```{r}
+
+```
+
+## ADAM ETS
+```{r}
+
+```
+
+## ADAM ETS SARIMA
+```{r}
+
+```
+
+## SSARIMA
