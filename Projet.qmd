@@ -489,16 +489,8 @@ df_test <- data.frame(
 )
 ```
 
+## 1. CALCUL DU MSE ET R2OOS
 ```{r}
-library(dplyr)
-library(knitr)
-library(tidyr)
-library(ggplot2)
-
-# ==========================================
-# 1. CALCUL DU MSE ET R2OOS
-# ==========================================
-
 # Calcul du MSE de la méthode Naïve (notre référence)
 mse_naive <- mean((as.numeric(obs_test) - df_test$Naïve)^2)
 
@@ -529,10 +521,12 @@ results <- results |> arrange(MSE)
 kable(results, caption = "Tableau des performances Out-of-Sample (Test sur l'année 2025)")
 
 
-# ==========================================
-# 2. GRAPHIQUE DES CSPE (Erreurs Cumulées)
-# ==========================================
 
+
+```
+
+## 2. GRAPHIQUE DES CSPE (Erreurs Cumulées)
+```{r}
 cspe_data <- df_test
 for(col in names(cspe_data)) {
   cspe_data[[col]] <- cumsum((cspe_data[[col]] - as.numeric(obs_test))^2)
@@ -570,5 +564,110 @@ ggplot(cspe_long, aes(x = Date, y = CSPE, color = Modèle)) +
     legend.title = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
+```
+
+# Test de précision : calculer le test de Diebold-Mariano pour chaque modèle par rapport à la prévision naïve et définir le meilleur modèle (option « less »)
+
+```{r}
+library(forecast)
+
+# 1. On recalcule l'erreur du modèle Naïf
+error_naive <- as.numeric(obs_test) - df_test$Naïve
+
+# 2. Création du tableau des résultats
+results_dm <- data.frame(Modèle = character(), DM_p_value = numeric())
+
+# 3. Boucle de test pour chaque modèle
+for (mod in colnames(df_test)) {
+  if (mod == "Naïve") next  
+  
+  pred <- df_test[[mod]]
+  err <- as.numeric(obs_test) - pred
+  
+  # Calcul du test (avec tryCatch pour éviter les plantages)
+  dm_result <- tryCatch({
+    dm_test <- dm.test(err, error_naive, alternative = "less", h = length(obs_test))
+    round(dm_test$p.value, 4) # On arrondit à 4 décimales pour faire propre
+  }, error = function(e) {
+    NA
+  })
+  
+  results_dm <- rbind(
+    results_dm,
+    data.frame(Modèle = mod, DM_p_value = dm_result)
+  )
+}
+
+# 4. On ajoute la ligne Naïve pour la forme
+results_dm <- rbind(results_dm, data.frame(Modèle = "Naïve", DM_p_value = NA))
+
+# 5. Tri pour mettre les meilleures p-values (les plus petites) en haut
+results_dm <- results_dm |> arrange(DM_p_value)
+
+kable(results_dm, caption = "Test de Diebold-Mariano (p-value < 0.05 = meilleur que Naïve)")
+```
+
+# 7) Prévision sur une année avec un pas de 1 mois
+```{r}
+# On veut prévoir 12 mois
+h <- 12        
+format_rolling <- numeric(h)
+
+# Attention : Cette boucle va calculer le modèle SARIMA 12 fois de suite ! 
+# C'est normal si R "réfléchit" pendant 15 à 30 secondes.
+for(i in 1:h) {
+  
+  # Calcul du mois de fin de l'échantillon d'apprentissage
+  # i=1 -> on s'arrête en déc. 2024 (pour prévoir janv. 2025)
+  # i=2 -> on s'arrête en janv. 2025 (pour prévoir févr. 2025), etc.
+  end_year <- 2024 + floor((10 + i) / 12)
+  end_month <- (10 + i) %% 12 + 1
+  
+  # On crée la fenêtre d'apprentissage propre (qui garde les vraies dates !)
+  train_rolling <- window(serie_adj, end = c(end_year, end_month))
+  
+  # On estime le SARIMA (le grand gagnant de la Q6) sur cette fenêtre
+  fit_roll <- auto.arima(train_rolling)
+  
+  # On prévoit uniquement 1 MOIS en avance
+  prev_roll <- forecast(fit_roll, h = 1)
+  
+  # On stocke le résultat
+  format_rolling[i] <- as.numeric(prev_roll$mean)
+}
+
+print("Prévisions glissantes terminées :")
+print(format_rolling)
+```
+
+## Graphique de comparaison 
+```{r}
+
+# 1. On récupère la vraie année 2025 (Janvier à Décembre)
+valeurs_reelles <- window(serie_adj, start = c(2025, 1), end = c(2025, 12))
+dates_2025 <- seq(as.Date("2025-01-01"), by = "month", length.out = 12)
+
+# 2. Création du tableau de comparaison
+df_final <- data.frame(
+  Date = dates_2025,
+  Prévision_SARIMA = format_rolling,
+  Réalité = as.numeric(valeurs_reelles)
+)
+
+# 3. Graphique final
+df_final_long <- tidyr::pivot_longer(df_final, -Date, names_to = "Série", values_to = "Valeur")
+
+ggplot(df_final_long, aes(x = Date, y = Valeur, color = Série)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = c("Prévision_SARIMA" = "orchid", "Réalité" = "mediumaquamarine")) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  labs(
+    title = "Validation Finale : SARIMA Glissant vs Réalité (2025)",
+    subtitle = "Alignement corrigé : prévision à 1 mois réestimée chaque mois",
+    x = NULL, y = "Millions de dollars"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
