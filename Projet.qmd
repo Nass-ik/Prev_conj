@@ -76,15 +76,15 @@ serie_adj <- fit_outliers$yadj
 
 library(knitr)
 
-# Création du tableau de données
+# Création du tableau de données synchronisé avec les résultats de fit_outliers
 tableau_outliers <- data.frame(
-  Date = c("Mars 2020", "Janvier 2025", "Mai 2020"),
-  Type_de_point = c("LS (Level Shift)", "LS (Level Shift)", "LS (Level Shift)"),
-  T_stat = c(7.917, -5.610, 5.576)
+  Date = c("Mars 2020", "Mai 2020", "Avril 2021", "Janvier 2025"),
+  Type_de_point = c("LS (Level Shift)", "LS (Level Shift)", "TC (Temporary Change)", "LS (Level Shift)"),
+  T_stat = c(7.917, 5.576, 4.782, -5.610)
 )
 
 # Affichage 
-kable(tableau_outliers, col.names = c("Date", "Type de point", "T-stat"))
+kable(tableau_outliers, col.names = c("Date", "Type de point", "T-stat"), digits = 3)
 ```
 
 1. Mars 2020 (Changement de niveau positif très fort)
@@ -133,6 +133,16 @@ library(RJDemetra)
 Création de la série en différence première (pour éliminer la tendance)
 ```{r}
 d_serie_adj <- diff(serie_adj, differences = 1)
+```
+
+```{r}
+library(seastests)
+
+print("Test isSeasonal :")
+isSeasonal(serie_adj, test = "combined", freq = 12)
+
+print("Combined Test détaillé :")
+summary(combined_test(serie_adj))
 ```
 
 1. Tracé des Périodogrammes
@@ -191,8 +201,18 @@ print(prev_x13_12mois)
 ```{r}
 fit_stl <- stlm(serie_adj)
 prev_stl <- forecast(fit_stl, h = h_prev)
-plot(prev_stl, main = "Prévision : Méthode STL", 
-     ylab = "Millions de dollars", xlab = "Année")
+
+plot(prev_stl, 
+     main = "Prévision : Méthode STL", 
+     ylab = "Millions de dollars", 
+     xlab = "Année")
+
+# Astuce anti-trou
+fin_x <- time(serie_adj)[length(serie_adj)]
+fin_y <- serie_adj[length(serie_adj)]
+debut_x <- time(prev_stl$mean)[1]
+debut_y <- prev_stl$mean[1]
+lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 ```
 
 
@@ -266,6 +286,7 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 ## TBATS
 ```{r}
+#| cache: true
 fit_tbats <- tbats(serie_adj)
 print(fit_tbats) 
 
@@ -284,6 +305,7 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 ## ADAM ETS
 ```{r}
+#| cache: true
 fit_adam1 <- auto.adam(serie_adj, model="MAdA", lags=c(1,12), select=TRUE)
 summary(fit_adam1)
 
@@ -302,6 +324,7 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 ## ADAM ETS SARIMA
 ```{r}
+#| cache: true
 fit_adam2 <- auto.adam(serie_adj, model="MAdA", lags=c(1,12), 
                        orders=list(ar=c(3,3), i=c(2), ma=c(3,3)),
                        select=TRUE)
@@ -325,6 +348,7 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 ## SSARIMA
 ```{r}
+#| cache: true
 # Modèle SSARIMA (State Space ARIMA)
 fit_ssarima <- auto.ssarima(serie_adj, lags=c(1,12), 
                             orders=list(ar=c(3,3), i=c(2), ma=c(3,3)), 
@@ -369,6 +393,34 @@ fin_y <- serie_adj[length(serie_adj)]
 debut_x <- time(prev_sarima$mean)[1]
 debut_y <- prev_sarima$mean[1]
 lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
+```
+
+tableau recap
+```{r}
+# Récupération des critères pour les modèles principaux
+tableau_aic <- data.frame(
+  Modèle = c("SARIMA", "ETS", "TBATS", "SSARIMA", "ADAM ETS", "ADAM SARIMA"),
+  AIC = c(
+    fit_sarima$aic,
+    fit_ets$aic,
+    fit_tbats$AIC, 
+    fit_ssarima$AIC,   # <- Corrigé ici
+    fit_adam1$AIC,     # <- Corrigé ici
+    fit_adam2$AIC      # <- Corrigé ici
+  ),
+  AICc = c(
+    fit_sarima$aicc,
+    fit_ets$aicc,
+    NA, 
+    fit_ssarima$AICc,  # <- Corrigé ici
+    fit_adam1$AICc,    # <- Corrigé ici
+    fit_adam2$AICc     # <- Corrigé ici
+  )
+)
+
+# On trie par AICc croissant (le plus petit est le meilleur)
+tableau_aic <- tableau_aic |> dplyr::arrange(AICc)
+knitr::kable(tableau_aic, caption = "Comparaison des critères d'information (AIC / AICc)")
 ```
 
 # 3 Représenter graphiquement l’évolution des prévisions des différents modèles et commenter.
@@ -566,95 +618,72 @@ ggplot(cspe_long, aes(x = Date, y = CSPE, color = Modèle)) +
   )
 ```
 
-# Test de précision : calculer le test de Diebold-Mariano pour chaque modèle par rapport à la prévision naïve et définir le meilleur modèle (option « less »)
+# 6 Test de précision : calculer le test de Diebold-Mariano pour chaque modèle par rapport à la prévision naïve et définir le meilleur modèle (option « less »)
 
 ```{r}
-library(forecast)
+# 1. Création et prévision du modèle AR(1) sur le train_test
+fit_ar1 <- Arima(train_test, order=c(1,0,0))
+prev_ar1 <- forecast(fit_ar1, h = 12)$mean
 
-# 1. On recalcule l'erreur du modèle Naïf
-error_naive <- as.numeric(obs_test) - df_test$Naïve
+# 2. Calcul de l'erreur du nouveau benchmark AR(1)
+error_ar1 <- as.numeric(obs_test) - as.numeric(prev_ar1)
 
-# 2. Création du tableau des résultats
+# 3. Création du tableau des résultats
 results_dm <- data.frame(Modèle = character(), DM_p_value = numeric())
 
-# 3. Boucle de test pour chaque modèle
+# 4. Boucle de test pour chaque modèle
 for (mod in colnames(df_test)) {
-  if (mod == "Naïve") next  
+  if (mod == "Naïve") next  # On peut ignorer la naïve maintenant
   
   pred <- df_test[[mod]]
   err <- as.numeric(obs_test) - pred
   
-  # Calcul du test (avec tryCatch pour éviter les plantages)
+  # Calcul du test par rapport à l'AR(1)
   dm_result <- tryCatch({
-    dm_test <- dm.test(err, error_naive, alternative = "less", h = length(obs_test))
-    round(dm_test$p.value, 4) # On arrondit à 4 décimales pour faire propre
-  }, error = function(e) {
-    NA
-  })
+    dm_test <- dm.test(err, error_ar1, alternative = "less", h = length(obs_test))
+    round(dm_test$p.value, 4)
+  }, error = function(e) { NA })
   
-  results_dm <- rbind(
-    results_dm,
-    data.frame(Modèle = mod, DM_p_value = dm_result)
-  )
+  results_dm <- rbind(results_dm, data.frame(Modèle = mod, DM_p_value = dm_result))
 }
 
-# 4. On ajoute la ligne Naïve pour la forme
-results_dm <- rbind(results_dm, data.frame(Modèle = "Naïve", DM_p_value = NA))
-
-# 5. Tri pour mettre les meilleures p-values (les plus petites) en haut
+# 5. Tri et affichage
 results_dm <- results_dm |> arrange(DM_p_value)
-
-kable(results_dm, caption = "Test de Diebold-Mariano (p-value < 0.05 = meilleur que Naïve)")
+kable(results_dm, caption = "Test de Diebold-Mariano (Référence : AR(1), p-value < 0.05 = meilleur)")
 ```
 
-# 7) Prévision sur une année avec un pas de 1 mois
+
+# 7) Prévision sur une année avec un pas de 1 mois (Rolling Window)
 ```{r}
-# On veut prévoir 12 mois
+library(forecast)
+library(ggplot2)
+library(tidyr)
+
+# --- 1. CALCUL DE LA BOUCLE ---
 h <- 12        
 format_rolling <- numeric(h)
 
-# Attention : Cette boucle va calculer le modèle SARIMA 12 fois de suite ! 
-# C'est normal si R "réfléchit" pendant 15 à 30 secondes.
 for(i in 1:h) {
-  
-  # Calcul du mois de fin de l'échantillon d'apprentissage
-  # i=1 -> on s'arrête en déc. 2024 (pour prévoir janv. 2025)
-  # i=2 -> on s'arrête en janv. 2025 (pour prévoir févr. 2025), etc.
   end_year <- 2024 + floor((10 + i) / 12)
   end_month <- (10 + i) %% 12 + 1
   
-  # On crée la fenêtre d'apprentissage propre (qui garde les vraies dates !)
   train_rolling <- window(serie_adj, end = c(end_year, end_month))
-  
-  # On estime le SARIMA (le grand gagnant de la Q6) sur cette fenêtre
   fit_roll <- auto.arima(train_rolling)
-  
-  # On prévoit uniquement 1 MOIS en avance
   prev_roll <- forecast(fit_roll, h = 1)
   
-  # On stocke le résultat
   format_rolling[i] <- as.numeric(prev_roll$mean)
 }
 
-print("Prévisions glissantes terminées :")
-print(format_rolling)
-```
-
-## Graphique de comparaison 
-```{r}
-
-# 1. On récupère la vraie année 2025 (Janvier à Décembre)
+# --- 2. CREATION DU GRAPHIQUE DIRECTEMENT APRES ---
 valeurs_reelles <- window(serie_adj, start = c(2025, 1), end = c(2025, 12))
 dates_2025 <- seq(as.Date("2025-01-01"), by = "month", length.out = 12)
 
-# 2. Création du tableau de comparaison
 df_final <- data.frame(
   Date = dates_2025,
   Prévision_SARIMA = format_rolling,
   Réalité = as.numeric(valeurs_reelles)
 )
 
-# 3. Graphique final
 df_final_long <- tidyr::pivot_longer(df_final, -Date, names_to = "Série", values_to = "Valeur")
 
 ggplot(df_final_long, aes(x = Date, y = Valeur, color = Série)) +
