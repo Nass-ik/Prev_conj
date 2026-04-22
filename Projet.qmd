@@ -397,30 +397,57 @@ lines(c(fin_x, debut_x), c(fin_y, debut_y), col = "blue")
 
 tableau recap
 ```{r}
-# Récupération des critères pour les modèles principaux
+# =========================================================
+# Création du tableau comparatif complet (Sécurisé)
+# =========================================================
+
+# Fonction anti-crash pour transformer les NULL en NA et garder 11 lignes
+safe_val <- function(x) { if (is.null(x)) NA else as.numeric(x) }
+
+# Calcul manuel de l'AIC et AICc pour le modèle STS 
+k_sts <- length(fitsts$coef)
+n_obs <- length(serie_adj)
+aic_sts <- 2 * k_sts - 2 * fitsts$loglik
+aicc_sts <- aic_sts + (2 * k_sts^2 + 2 * k_sts) / (n_obs - k_sts - 1)
+
+# Construction du grand tableau de données
 tableau_aic <- data.frame(
-  Modèle = c("SARIMA", "ETS", "TBATS", "SSARIMA", "ADAM ETS", "ADAM SARIMA"),
+  Modèle = c("Naïve", "X13-SARIMA-SEATS", "STL", "STS", "Holt-Winters", 
+             "SARIMA", "ETS", "TBATS", "SSARIMA", "ADAM ETS", "ADAM SARIMA"),
   AIC = c(
-    fit_sarima$aic,
-    fit_ets$aic,
-    fit_tbats$AIC, 
-    fit_ssarima$AIC,   # <- Corrigé ici
-    fit_adam1$AIC,     # <- Corrigé ici
-    fit_adam2$AIC      # <- Corrigé ici
+    NA,
+    safe_val(myregx13$model$regarima$aic), 
+    safe_val(fit_stl$model$aic),           
+    aic_sts,                         
+    safe_val(prev_hw$model$aic),           
+    safe_val(fit_sarima$aic),
+    safe_val(fit_ets$aic),
+    safe_val(fit_tbats$AIC), 
+    safe_val(fit_ssarima$AIC),   
+    safe_val(fit_adam1$AIC),     
+    safe_val(fit_adam2$AIC)      
   ),
   AICc = c(
-    fit_sarima$aicc,
-    fit_ets$aicc,
-    NA, 
-    fit_ssarima$AICc,  # <- Corrigé ici
-    fit_adam1$AICc,    # <- Corrigé ici
-    fit_adam2$AICc     # <- Corrigé ici
+    NA,
+    NA, # X13 ne fournit pas d'AICc natif
+    safe_val(fit_stl$model$aicc),
+    aicc_sts,                         
+    safe_val(prev_hw$model$aicc),
+    safe_val(fit_sarima$aicc),
+    safe_val(fit_ets$aicc),
+    NA, # TBATS ne fournit pas d'AICc natif
+    safe_val(fit_ssarima$AICc),  
+    safe_val(fit_adam1$AICc),    
+    safe_val(fit_adam2$AICc)     
   )
 )
 
-# On trie par AICc croissant (le plus petit est le meilleur)
-tableau_aic <- tableau_aic |> dplyr::arrange(AICc)
-knitr::kable(tableau_aic, caption = "Comparaison des critères d'information (AIC / AICc)")
+# Tri du tableau par AICc croissant 
+tableau_aic <- tableau_aic |> 
+  dplyr::arrange(AICc)
+
+# Affichage final
+knitr::kable(tableau_aic, digits = 2, caption = "Comparaison globale des critères d'information")
 ```
 
 # 3 Représenter graphiquement l’évolution des prévisions des différents modèles et commenter.
