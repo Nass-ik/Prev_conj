@@ -1,0 +1,779 @@
+---
+title: "Analyse et prévision des ventes de boissons alcoolisées aux États-Unis"
+subtitle: "Techniques de Prévision et Conjoncture — M1 ECAP 2025-2026"
+author:
+  - "Jameson Saussereau & Nassim Ikhelef"
+date: "Avril 2026"
+format:
+  pdf:
+    toc: true
+    toc-depth: 3
+    toc-title: "Sommaire"
+    number-sections: true
+    colorlinks: true
+    geometry: "top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm"
+    fontsize: 11pt
+    linestretch: 1.2
+execute:
+  echo: false
+  warning: false
+  message: false
+lang: fr
+---
+
+```{r setup}
+#| include: false
+source("Projet.R")
+library(knitr)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(fBasics)
+library(TSA)
+library(seastests)
+```
+
+\newpage
+
+# Introduction
+
+Ce dossier porte sur l'analyse et la prévision de la série mensuelle des ventes au détail de boissons alcoolisées aux États-Unis. La série retenue, disponible sur le site de la Federal Reserve Bank of St. Louis (FRED) sous le code MRTSSM4453USN, mesure le chiffre d'affaires mensuel des commerces spécialisés dans la vente de bières, vins et spiritueux, exprimé en millions de dollars. Nous avons travaillé sur une période de vingt ans, de janvier 2006 à décembre 2025, soit 240 observations mensuelles.
+
+Le choix de cette série se justifie de plusieurs manières. D'abord, elle présente une saisonnalité très marquée et régulière, avec un pic systématique en décembre lié aux achats de fin d'année et une légère accélération estivale, ce qui en fait un terrain d'application direct pour les méthodes de prévision saisonnières étudiées en cours. Ensuite, la série a traversé des chocs économiques importants : la pandémie de COVID-19 en 2020 a profondément modifié les comportements d'achat des ménages américains, en faisant basculer la consommation d'alcool des bars et restaurants vers les magasins de détail. Identifier et corriger ces ruptures est un enjeu méthodologique central de ce dossier.
+
+Sur le plan économique, le secteur de la vente au détail de boissons alcoolisées représente plusieurs dizaines de milliards de dollars par an aux États-Unis. Il est influencé à la fois par des facteurs structurels comme la croissance du marché des alcools premium, consolidation de grandes enseignes spécialisées et conjoncturels comme l'inflation, le pouvoir d'achat des ménages ou les politiques fiscales spécifiques à l'alcool.
+
+Ce dossier est organisé en six parties. La première est consacrée à l'analyse exploratoire : présentation de la série, identification et correction des points atypiques, statistiques descriptives, analyse de la saisonnalité et désaisonnalisation par X13-ARIMA-SEATS. Les parties deux et trois présentent l'estimation de onze modèles de prévision et leur comparaison sur l'horizon 2026. Les parties quatre et cinq évaluent la qualité prédictive hors échantillon via les indicateurs MSE, R²OOS, les graphiques CSPE et le test de Diebold-Mariano. Enfin, la sixième partie compare une prévision glissante à 1 pas sur 2025 à la réalité observée.
+
+\newpage
+
+# Partie 1 — Analyse exploratoire de la série
+
+## Présentation et caractérisation de la série
+
+La série MRTSSM4453USN (Retail Sales: Beer, Wine, and Liquor Stores) est disponible sur le site de la Federal Reserve Bank of St. Louis (FRED)^[Source : Federal Reserve Bank of St. Louis (FRED), Retail Sales: Beer, Wine, and Liquor Stores [MRTSSM4453USN]. Disponible à : https://fred.stlouisfed.org/series/MRTSSM4453USN. Données issues du U.S. Census Bureau, Monthly Retail Trade Survey.]. Elle mesure le chiffre d'affaires mensuel total des commerces de détail spécialisés dans la vente de boissons alcoolisées aux États-Unis, exprimé en millions de dollars. La série n'est pas corrigée des variations saisonnières.
+
+Pour ce dossier, nous avons retenu la période allant de janvier 2006 à décembre 2025, soit exactement 20 ans et 240 observations mensuelles. Ce découpage respecte les contraintes du guide et inclut les deux grands chocs récents : la crise financière de 2008-2009 et la pandémie de COVID-19.
+
+```{r}
+#| label: fig-alcool-niveau
+#| fig-cap: "Ventes mensuelles de boissons alcoolisées aux États-Unis (2006-2025)"
+#| fig-align: center
+#| out-width: "90%"
+
+plot(serie_ts,
+     main = "Ventes de boissons alcoolisées aux États-Unis (2006-2025)",
+     ylab = "Millions de dollars",
+     xlab = "Année",
+     col  = "darkblue",
+     lwd  = 2)
+
+rect(xleft  = 2020, ybottom = par("usr")[3],
+     xright = 2021.5, ytop  = par("usr")[4],
+     col = rgb(0.5, 0.5, 0.5, alpha = 0.3), border = NA)
+
+text(x = 2020.7, y = max(serie_ts) * 0.95,
+     labels = "COVID-19", cex = 0.7, col = "red")
+```
+
+Le graphique en niveau fait ressortir plusieurs caractéristiques importantes de cette série.
+
+On observe d'abord une tendance haussière nette sur toute la période : les ventes sont passées d'environ 2 500 millions de dollars début 2006 à des niveaux dépassant 7 000 millions de dollars en fin de période, soit une multiplication par près de trois en vingt ans. Cette croissance reflète à la fois la hausse du prix moyen de l'alcool et l'expansion du marché américain.
+
+La saisonnalité est très visible et régulière d'une année sur l'autre. Un pic important apparaît chaque décembre, correspondant aux achats de Noël et du Réveillon. Une légère accélération estivale est aussi perceptible en juin-juillet. Les creux surviennent systématiquement en janvier et février, après les fêtes.
+
+On distingue également une rupture de niveau autour de 2020 : lors des confinements, les ventes en magasin ont fortement augmenté et se sont maintenues à des niveaux plus élevés après la réouverture des établissements. L'amplitude des oscillations saisonnières augmente visiblement avec le niveau général de la série, ce qui suggère un schéma de décomposition multiplicatif plutôt qu'additif.
+
+```{r}
+#| label: fig-saisonnier
+#| fig-cap: "Comparaison de la saisonnalité par année (2006-2025)"
+#| fig-align: center
+#| out-width: "95%"
+
+ggseasonplot(serie_ts, col = rainbow(20), year.labels = TRUE,
+             main = "Graphique saisonnier des ventes d'alcool (2006-2025)")
+```
+
+En observant de plus près la saisonnalité de la série, on voit nettement un pic récurrent en décembre chaque année, lié aux achats de fin d'année. Un second pic, plus modéré, apparaît en été (juin-juillet). Les creux se produisent systématiquement en janvier et février. Les courbes montent d'année en année, reflet de la tendance haussière de la série : les années récentes (en rouge et rose) sont nettement au-dessus des années 2006-2010 (en bleu-vert). On remarque également un saut visible entre 2019 et 2020, correspondant au choc COVID identifié dans la partie suivante.
+
+## Détection des points atypiques
+
+La présence de points atypiques peut biaiser les estimations des modèles si elle n'est pas prise en compte. Pour les identifier, nous utilisons la méthode de Chen et Liu (1993). Cette méthode distingue trois types de chocs : les Additive Outliers (AO) qui affectent une seule observation, les Level Shifts (LS) qui correspondent à un changement de niveau permanent, et les Temporary Changes (TC) qui représentent un choc suivi d'un retour progressif au niveau initial.
+
+```{r}
+#| label: tbl-outliers
+#| tbl-cap: "Points atypiques détectés par la méthode Chen & Liu"
+
+tableau_outliers <- data.frame(
+  Date   = c("Mars 2020", "Mai 2020", "Avril 2021", "Janvier 2025"),
+  Type   = c("LS (Level Shift)", "LS (Level Shift)",
+              "TC (Temporary Change)", "LS (Level Shift)"),
+  T_stat = c(7.917, 5.576, 4.782, -5.610)
+)
+
+kable(tableau_outliers,
+      col.names = c("Date", "Type de point", "T-statistique"),
+      digits    = 3,
+      align     = c("l", "l", "r"),
+      booktabs  = TRUE)
+```
+
+L'algorithme identifie quatre points atypiques, tous statistiquement significatifs. Nous présentons ci-dessous l'interprétation économique des trois les plus importants. Le graphique correspondant est disponible en annexe (figure A1).
+
+**Mars 2020 — Level Shift positif (t-stat : +7,92)**
+
+C'est le choc le plus important détecté sur l'ensemble de la série. En mars 2020, la pandémie de COVID-19 a conduit à la fermeture brutale de la quasi-totalité des bars et restaurants aux États-Unis^[National Restaurant Association, "Restaurant Industry in Free Fall; 10,000 Close in Three Months", décembre 2020, disponible sur : https://restaurant.org/research-and-media/media/press-releases/restaurant-industry-in-free-fall;-10,000-close-in-three-months/. L'association estimait que 110 000 établissements avaient fermé leurs portes de manière permanente ou prolongée depuis le début des mesures de confinement.]. Les consommateurs ont alors massivement reporté leurs achats d'alcool vers les magasins de détail pour consommer à domicile. Ce changement de comportement a produit un saut de niveau important et durable dans les ventes au détail. Même après la réouverture progressive des établissements, une partie des nouvelles habitudes de consommation à domicile a persisté, ce qui justifie le caractère permanent du choc.
+
+**Janvier 2025 — Level Shift négatif (t-stat : −5,61)**
+
+Ce choc négatif récent s'explique par plusieurs facteurs simultanés. La normalisation post-COVID avec le retour complet des consommateurs vers les bars et restaurants a progressivement réduit les ventes au détail^[U.S. Bureau of Labor Statistics, Consumer Expenditures in 2023, décembre 2024, disponible sur : https://www.bls.gov/opub/reports/consumer-expenditures/2023/. Le rapport indique que les dépenses de restauration hors domicile ont augmenté de 8,1 % en 2023, confirmant le retour à des niveaux de fréquentation proches de la période pré-pandémique.]. Par ailleurs, après plusieurs années d'inflation élevée, les ménages américains ont revu à la baisse leurs dépenses, dont l'alcool fait partie^[U.S. Bureau of Labor Statistics, Consumer Price Index — December 2024, janvier 2025, disponible sur : https://www.bls.gov/news.release/archives/cpi_01152025.htm. Les données CPI montrent une hausse cumulative des prix des boissons alcoolisées entre 2020 et 2024, consultables également via la base de données FRED : https://fred.stlouisfed.org/series/CUSR0000SAF116.]. Enfin, la progression du Dry January, un mouvement encourageant l'abstinence d'alcool pendant tout le mois de janvier gagne chaque année en popularité aux États-Unis et commence à produire un effet mesurable sur les volumes de vente du secteur^[NielsenIQ, Beyond Dry January: Alcohol Moderation Trends, 2024, disponible sur : https://nielseniq.com/global/en/insights/analysis/2024/beyond-dry-january-alcohol-moderation-trends/. L'analyse souligne une croissance marquée de la modération alcoolisée, portée notamment par la génération Z dont 45 % déclarent n'avoir jamais consommé d'alcool.].
+
+**Mai 2020 — Level Shift positif (t-stat : +5,58)**
+
+Ce second palier haussier de 2020 correspond à l'arrivée des premiers chèques de relance du CARES Act (*Coronavirus Aid, Relief, and Economic Security Act*, Pub. L. 116-136), versés à partir d'avril-mai 2020 aux ménages américains^[Congressional Budget Office, *The CARES Act : Budgetary Cost and Economic Effects*, avril 2020. Le programme de paiements directs a distribué environ 292 milliards de dollars aux ménages américains éligibles.]. Ce transfert direct de revenus, combiné à l'impossibilité de dépenser dans les loisirs extérieurs à l'approche de l'été, a généré une nouvelle hausse des achats d'alcool en magasin.
+
+L'ensemble de ces quatre points atypiques est retiré de la série. Toute la suite du dossier s'appuie sur la série corrigée.
+
+## Statistiques descriptives sur la série corrigée
+
+```{r}
+#| label: tbl-stats
+#| tbl-cap: "Statistiques descriptives de la série corrigée des points atypiques"
+
+serie_vec <- as.numeric(serie_adj)
+
+stats_tableau <- data.frame(
+  Indicateur = c(
+    "Nombre d'observations", "Minimum (M$)", "Maximum (M$)",
+    "Moyenne (M$)", "Médiane (M$)", "Ecart-type (M$)",
+    "Skewness", "Kurtosis (excès)"
+  ),
+  Valeur = c(
+    length(serie_vec),
+    round(min(serie_vec), 0),
+    round(max(serie_vec), 0),
+    round(mean(serie_vec), 0),
+    round(median(serie_vec), 0),
+    round(sd(serie_vec), 0),
+    round(as.numeric(fBasics::skewness(serie_vec)), 4),
+    round(as.numeric(fBasics::kurtosis(serie_vec)), 4)
+  )
+)
+
+kable(stats_tableau,
+      col.names = c("Indicateur", "Valeur"),
+      align     = c("l", "r"),
+      booktabs  = TRUE)
+```
+
+La moyenne et la médiane sont relativement proches mais la médiane est inférieure à la moyenne. Cela traduit une asymétrie positive : les valeurs très élevées des décembres récents tirent la moyenne vers le haut. Le coefficient de skewness positif confirme cette asymétrie à droite.
+
+Le kurtosis est supérieur à zéro, ce qui indique que la distribution présente des queues plus épaisses que celles d'une loi normale. Ce résultat est attendu pour une série avec une forte saisonnalité et une tendance marquée : les mois de décembre constituent des observations nettement plus extrêmes que le reste, et la tendance haussière allonge la queue droite de la distribution. Le box-plot correspondant est disponible en annexe (figure A2).
+
+## Détection de la saisonnalité
+
+Pour confirmer la présence d'une saisonnalité, nous utilisons deux approches complémentaires : l'analyse spectrale via les périodogrammes et des tests formels.
+
+```{r}
+#| label: fig-periodogrammes
+#| fig-cap: "Périodogrammes de la série corrigée en niveau (gauche) et en différence première (droite)"
+#| fig-align: center
+#| out-width: "95%"
+
+par(mfrow = c(1, 2))
+TSA::periodogram(serie_adj,   main = "En niveau",              ylab = "Densité spectrale")
+TSA::periodogram(d_serie_adj, main = "En différence première",  ylab = "Densité spectrale")
+par(mfrow = c(1, 1))
+```
+
+```{r}
+#| include: false
+res_seas     <- isSeasonal(serie_adj, test = "combined", freq = 12)
+res_combined <- combined_test(serie_adj)
+```
+
+Sur le périodogramme de la série en niveau, des pics très nets apparaissent aux fréquences saisonnières. Le pic le plus important correspond à la fréquence 1/12, soit un cycle de 12 mois. D'autres pics harmoniques sont visibles aux fréquences 2/12, 3/12 et 4/12, ce qui montre que les effets saisonniers ont une forme complexe, avec notamment un pic de décembre bien plus fort que les autres mois.
+
+Sur la série en différence première, ces pics restent clairement visibles malgré la suppression de la tendance par différenciation. La saisonnalité est donc persistante et ne disparaît pas avec la seule différenciation ordinaire.
+
+Les tests formels de saisonnalité confirment ces observations. L'hypothèse nulle d'absence de saisonnalité est rejetée avec une p-value très inférieure au seuil de 5 %. Ces résultats valident le recours à des modèles intégrant explicitement une composante saisonnière.
+
+L'interprétation économique est directe. Décembre est le mois le plus fort de l'année, alimenté par les achats de cadeaux et les célébrations de fin d'année. Janvier est le mois le plus faible, par effet de rattrapage après les fêtes et par la progression du Dry January. Un second pic, moins marqué, apparaît en été. Cette saisonnalité est stable d'une année sur l'autre, ce qui est un atout pour la prévision.
+
+## Désaisonnalisation et décomposition X13-ARIMA-SEATS
+
+Pour désaisonnaliser et décomposer la série, nous utilisons la méthode X13-ARIMA-SEATS via le package RJDemetra, avec la spécification RSA5c. Cette spécification permet une détection automatique du schéma de décomposition, du modèle ARIMA sous-jacent et des effets déterministes.
+
+```{r}
+#| include: false
+x13_model <- mysax13$regarima
+```
+
+Schéma de décomposition retenu
+
+La méthode retient un schéma de décomposition multiplicatif. Ce choix est cohérent avec ce qu'on observe graphiquement : l'amplitude des oscillations saisonnières croît proportionnellement au niveau de la série. La série se décompose selon la formule $Y_t = T_t \times S_t \times I_t$, où $T_t$ est la composante tendancielle, $S_t$ la composante saisonnière et $I_t$ la composante irrégulière. Un facteur saisonnier de 1,45 pour décembre signifie par exemple que les ventes de décembre sont en moyenne 45 % au-dessus du niveau de tendance.
+
+Effets déterministes et modèle SARIMA identifié
+
+Le modèle RegARIMA identifié par X13 intègre une différenciation ordinaire (d = 1), qui traduit la non-stationnarité en tendance, et une différenciation saisonnière (D = 1), qui capte la non-stationnarité saisonnière. Parmi les effets déterministes potentiels, X13 peut détecter un effet Trading Day (l'impact du nombre de jours calendaires sur les ventes mensuelles) ou un effet Leap Year. Pour une série de ventes au détail, ces effets sont pertinents car un mois avec plus de jours affiche mécaniquement des ventes plus élevées.
+
+```{r}
+#| label: fig-decomposition
+#| fig-cap: "Décomposition de la série par la méthode X13-ARIMA-SEATS"
+#| fig-align: center
+#| out-width: "90%"
+
+plot(mysax13$final)
+```
+
+La composante tendancielle est régulièrement croissante sur l'ensemble de la période, avec une inflexion notable autour de 2020 liée au rebond COVID, puis une légère stabilisation vers 2024-2025. La composante saisonnière est stable et régulière sur vingt ans : les facteurs saisonniers ne présentent pas de dérive temporelle, ce qui est un signal de bonne qualité pour la désaisonnalisation et un atout pour la prévision. La composante irrégulière est globalement contenue, à l'exception de la période 2020-2021, ce qui confirme que le modèle capture bien la dynamique de la série.
+
+\newpage
+
+# Partie 2 — Estimation des modèles de prévision
+
+Onze modèles ont été estimés sur la série corrigée (janvier 2006 — décembre 2025) pour produire des prévisions sur l'horizon 2026. Les graphiques individuels de chaque modèle sont disponibles en annexe (figures A3 à A13).
+
+## Méthodes de référence : Naïve, X13-ARIMA-SEATS, STL et STS
+
+La méthode Naïve sert de point de référence minimal : elle reproduit pour chaque mois de 2026 la valeur observée au même mois de 2025, sans aucune modélisation de la tendance.
+
+Le modèle RegARIMA identifié par X13-ARIMA-SEATS intègre une différenciation ordinaire (d = 1) et une différenciation saisonnière (D = 1), traduisant la non-stationnarité de la série en tendance et en saisonnalité. Les prévisions présentent un profil saisonnier bien marqué et une légère tendance haussière, cohérente avec la dynamique de long terme de la série.
+
+Pour STL, le lissage appliqué à la composante tendancielle produit des prévisions qui prolongent de façon régulière les schémas saisonniers observés, avec une tendance modérément croissante.
+
+Pour le modèle STS, les variances estimées des composantes structurelles sont les suivantes :
+
+```{r tbl-sts-body}
+#| label: tbl-sts-body
+#| tbl-cap: "Variances estimées des composantes du modèle STS"
+
+variances_sts <- data.frame(
+  Composante = c("Level", "Slope", "Seas", "Epsilon"),
+  Variance   = round(as.numeric(fitsts$coef), 8)
+)
+kable(variances_sts,
+      col.names = c("Composante", "Variance estimée"),
+      align = c("l", "r"), booktabs = TRUE)
+```
+
+La variance du niveau (level) est quasi nulle, ce qui signifie que le niveau de la série est pratiquement stable. La variance de la pente (slope) est très faible, montrant que la tendance évolue lentement dans le temps. La saisonnalité (seas) est régulière et stable d'une année sur l'autre, avec une variance très faible. Enfin, la variance des erreurs résiduelles (epsilon) est également très faible, indiquant que le modèle explique bien la dynamique passée de la série. En contrepartie, cette stabilité structurelle peut pénaliser le modèle face à un choc exogène comme le Level Shift de janvier 2025, auquel il réagit lentement.
+
+## Méthodes de lissage exponentiel : Holt-Winters, ETS, TBATS, ADAM ETS, ADAM ETS SARIMA et SSARIMA
+
+**Holt-Winters.** Nous retenons un schéma multiplicatif, cohérent avec la structure de la série identifiée dans la partie 1 (amplitude saisonnière croissante avec le niveau). Les paramètres estimés sont les suivants :
+
+```{r tbl-hw-body}
+#| label: tbl-hw-body
+#| tbl-cap: "Paramètres de lissage estimés — Holt-Winters multiplicatif"
+
+params_hw <- data.frame(
+  Paramètre = c("Alpha (α)", "Beta (β)", "Gamma (γ)"),
+  Valeur    = round(c(prev_hw$model$par["alpha"],
+                      prev_hw$model$par["beta"],
+                      prev_hw$model$par["gamma"]), 4)
+)
+kable(params_hw, col.names = c("Paramètre", "Valeur estimée"),
+      align = c("l", "r"), booktabs = TRUE)
+```
+
+```{r include=FALSE}
+hw_alpha <- round(prev_hw$model$par["alpha"], 2)
+hw_beta  <- round(prev_hw$model$par["beta"],  4)
+hw_gamma <- round(prev_hw$model$par["gamma"], 2)
+```
+
+Le paramètre alpha (`r hw_alpha`) est élevé, ce qui signifie que le modèle accorde un fort poids aux observations récentes. Cela est cohérent avec une série qui a connu des ruptures marquées (COVID, janvier 2025) : le modèle s'adapte rapidement aux nouvelles données. Beta est très faible (`r hw_beta`), indiquant que la tendance évolue lentement dans le temps. Gamma (`r hw_gamma`) reflète une saisonnalité moyennement réactive. On retrouve dans les prévisions une hausse en été et un pic en décembre, ce qui confirme le schéma saisonnier identifié dans la partie 1.
+
+```{r include=FALSE}
+modele_ets_str <- fit_ets$method
+ets_par        <- round(fit_ets$par, 4)
+ets_alpha      <- ets_par["alpha"]
+ets_phi        <- ets_par["phi"]
+```
+
+**ETS.** Le modèle sélectionné automatiquement est **`r modele_ets_str`**.
+
+```{r tbl-ets-body}
+#| label: tbl-ets-body
+#| tbl-cap: "Paramètres estimés du modèle ETS"
+
+params_ets_df <- data.frame(
+  Paramètre = names(fit_ets$par),
+  Valeur    = round(as.numeric(fit_ets$par), 4)
+)
+kable(params_ets_df, col.names = c("Paramètre", "Valeur estimée"),
+      align = c("l", "r"), booktabs = TRUE)
+```
+
+Le paramètre phi (`r ets_phi`) est proche de 1, ce qui signifie que la tendance est légèrement amortie mais reste active sur tout l'horizon de prévision. Alpha (`r ets_alpha`) utilise à la fois les valeurs passées et récentes pour le lissage, sans surpondérer les dernières observations. Les prévisions ETS sont stables, avec un profil saisonnier régulier et une tendance qui s'atténue progressivement sur les 12 mois.
+
+**TBATS.** Le modèle utilise une saisonnalité trigonométrique, ce qui lui permet d'adapter la forme des cycles saisonniers de manière flexible. Les intervalles de confiance sont plus étroits que ceux d'ETS, reflétant une meilleure adaptation aux régularités de la série. Les prévisions montrent une hausse en été et un pic en décembre, en cohérence avec les autres modèles.
+
+**ADAM ETS.** Le modèle sélectionné avec saisonnalité forcée produit des prévisions très proches de celles d'ETS. Le paramètre alpha est très faible, traduisant une réactivité limitée aux données les plus récentes ; beta et phi proches de 1 confirment une tendance lentement croissante mais amortie. Les prévisions sont stables, avec une structure saisonnière modérée et un niveau relativement constant d'un mois sur l'autre. Les paramètres complets sont disponibles en annexe (tableau B1).
+
+**ADAM ETS SARIMA.** Ce modèle combine la structure ETS avec une partie SARIMA saisonnière d'ordre 12, ce qui lui permet de capter à la fois les autocorrélations de court terme et la dépendance saisonnière annuelle. Il dispose d'un nombre de paramètres plus élevé, ce qui lui confère une richesse supplémentaire mais aussi un risque plus élevé de surajustement.
+
+**SSARIMA.** Les prévisions sont quasi identiques à celles de SARIMA sur l'horizon de 12 mois. Les lags saisonniers d'ordre 12 ont des coefficients significatifs, confirmant la forte dépendance saisonnière annuelle de la série. Les intervalles de confiance sont étroits, ce qui indique un modèle relativement précis à court terme.
+
+## Modèle SARIMA
+
+```{r include=FALSE}
+arma_ord    <- fit_sarima$arma
+sarima_spec <- paste0("ARIMA(", arma_ord[1], ",", arma_ord[6], ",", arma_ord[2],
+                      ")(", arma_ord[3], ",", arma_ord[7], ",", arma_ord[4], ")[12]")
+```
+
+Le modèle identifié automatiquement est **`r sarima_spec`**.
+
+```{r tbl-sarima-body}
+#| label: tbl-sarima-body
+#| tbl-cap: "Coefficients estimés du modèle SARIMA"
+
+coef_sarima <- data.frame(
+  Coefficient = names(coef(fit_sarima)),
+  Valeur      = round(as.numeric(coef(fit_sarima)), 4)
+)
+kable(coef_sarima, col.names = c("Coefficient", "Valeur estimée"),
+      align = c("l", "r"), booktabs = TRUE)
+```
+
+Le modèle intègre une différenciation ordinaire (d = 1) et une différenciation saisonnière (D = 1), traduisant la non-stationnarité de la série en tendance et en saisonnalité. Le coefficient saisonnier (sma1) est significatif et élevé en valeur absolue, ce qui indique une forte correction des erreurs décalées de 12 mois et une forte dépendance saisonnière des résidus. Les intervalles de confiance des prévisions sont étroits, signe d'une bonne précision estimée sur l'horizon de 12 mois.
+
+## Tableau comparatif AIC / AICc
+
+```{r tbl-aic}
+#| label: tbl-aic
+#| tbl-cap: "Comparaison des modèles par critères d'information — trié par AICc croissant"
+
+kable(tableau_aic,
+      col.names = c("Modèle", "AIC", "AICc"),
+      digits    = c(0, 2, 2),
+      align     = c("l", "r", "r"),
+      booktabs  = TRUE)
+```
+
+L'AIC et l'AICc pénalisent la complexité du modèle pour éviter le surajustement. Plus ils sont faibles, meilleur est le modèle au sens du compromis ajustement-parcimonie. Le modèle en tête de tableau est donc celui qui capture le mieux la dynamique de la série tout en restant le plus simple possible. Les modèles avec un grand nombre de paramètres (ADAM ETS SARIMA, SSARIMA) peuvent être pénalisés malgré un bon ajustement brut.
+
+\newpage
+
+# Partie 3 — Prévisions comparées sur 12 mois
+
+Pour comparer les trajectoires de prévision de l'ensemble des modèles, nous les représentons sur un même graphique pour l'année 2026.
+
+```{r fig-previsions-comparees}
+#| label: fig-previsions-comparees
+#| fig-cap: "Prévisions comparées des onze modèles pour l'année 2026 (millions de dollars)"
+#| fig-align: center
+#| out-width: "95%"
+
+ggplot(df_long, aes(x = Date, y = Valeur, color = Méthode)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title    = "Prévisions 2026 — Comparaison des onze modèles",
+    subtitle = "Horizon : janvier à décembre 2026",
+    x        = "Mois",
+    y        = "Millions de dollars"
+  ) +
+  scale_color_manual(values = couleurs) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold"),
+    legend.title = element_blank(),
+    axis.text.x  = element_text(angle = 45, hjust = 1)
+  )
+```
+
+L'ensemble des modèles s'accorde sur la forme générale de la saisonnalité 2026 : un creux en janvier-février, une légère reprise estivale et un pic en décembre. Les divergences portent sur le niveau des prévisions. Les modèles à tendance forte comme STS et Holt-Winters projettent les ventes les plus élevées. Les modèles plus prudents — SARIMA, ETS, ADAM ETS — convergent vers un niveau intermédiaire. La méthode Naïve en noir forme la borne inférieure du faisceau, sans aucune tendance haussière.
+
+La dispersion entre les prévisions de décembre est particulièrement visible : elle traduit l'incertitude sur le niveau de la tendance pour 2026, après le Level Shift négatif de janvier 2025. Les modèles qui ont le mieux absorbé ce choc sur la période de test tendent à projeter des niveaux plus modérés.
+
+## Confrontation des modèles aux valeurs réalisées 2025
+
+Avant de retenir un modèle pour la prévision 2026, il est essentiel de confronter les prévisions hors échantillon aux valeurs effectivement observées en 2025. Les modèles ont tous été réestimés sur la période 2006-2024, puis leurs prévisions pour 2025 sont superposées aux données réalisées.
+
+```{r fig-confrontation-2025}
+#| label: fig-confrontation-2025
+#| fig-cap: "Prévisions 2025 de tous les modèles vs valeurs réalisées (millions de dollars)"
+#| fig-align: center
+#| out-width: "95%"
+
+dates_2025_test <- seq(as.Date("2025-01-01"), by = "month", length.out = 12)
+
+# Pivot df_test en format long (df_test est wide : colonnes = modèles)
+df_test_long <- tidyr::pivot_longer(
+  cbind(Date = dates_2025_test, df_test),
+  cols      = -Date,
+  names_to  = "Modèle",
+  values_to = "Valeur"
+)
+
+# Série réalisée
+df_realise_2025 <- data.frame(
+  Date   = dates_2025_test,
+  Modèle = "Réalisé 2025",
+  Valeur = as.numeric(obs_test)
+)
+
+df_confrontation <- rbind(df_test_long, df_realise_2025)
+
+couleurs_conf <- c(
+  couleurs_test[names(couleurs_test) != "Naïve"],
+  "Naïve"        = "gray60",
+  "Réalisé 2025" = "black"
+)
+
+est_realise <- df_confrontation$Modèle == "Réalisé 2025"
+
+ggplot(df_confrontation, aes(x = Date, y = Valeur, color = .data[["Modèle"]])) +
+  geom_line(data = subset(df_confrontation, Modèle != "Réalisé 2025"),
+            linewidth = 0.7) +
+  geom_line(data = subset(df_confrontation, Modèle == "Réalisé 2025"),
+            linewidth = 1.8, linetype = "dashed") +
+  scale_color_manual(values = couleurs_conf) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  labs(
+    title    = "Confrontation des prévisions 2025 aux valeurs réalisées",
+    subtitle = "Ligne noire pointillée épaisse = valeurs réellement observées",
+    x        = NULL,
+    y        = "Millions de dollars"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title   = element_text(face = "bold"),
+    legend.title = element_blank(),
+    axis.text.x  = element_text(angle = 45, hjust = 1)
+  )
+```
+
+Le graphique met en évidence les différences de comportement des modèles face au choc de janvier 2025. Les modèles à forte tendance haussière (STS, Holt-Winters) surestiment nettement les ventes réalisées sur le premier semestre, car ils prolongent la dynamique pré-2025 sans anticiper la baisse de niveau. À l'inverse, les modèles plus réactifs (SARIMA, ADAM ETS, ETS) se rapprochent davantage de la courbe réalisée. On observe que les écarts sont maximaux en janvier-février 2025, au moment du choc, et se réduisent progressivement sur le reste de l'année au fur et à mesure que les modèles glissants intègrent le nouveau régime de la série.
+
+\newpage
+
+# Partie 4 — Qualité de prévision
+
+Pour évaluer la qualité des prévisions hors échantillon, nous avons séparé la série en deux sous-périodes : une période d'entraînement (janvier 2006 — décembre 2024) et une période de test (janvier — décembre 2025). Chaque modèle est ré-estimé uniquement sur les données d'entraînement, puis utilisé pour prévoir les 12 mois de 2025, que l'on compare aux valeurs réellement observées.
+
+Cette approche hors échantillon est meilleure que la seule comparaison des critères AIC, qui mesurent la qualité d'ajustement sur les données passées. Un modèle peut très bien ajuster les données historiques tout en présentant une mauvaise capacité prédictive sur des données nouvelles. Le test hors échantillon est donc la vraie épreuve pour un modèle de prévision.
+
+## Tableau MSE et R²OOS
+
+```{r}
+#| label: tbl-mse-r2oos
+#| tbl-cap: "Performances hors échantillon des modèles — test sur l'année 2025 (référence : méthode Naïve)"
+
+kable(results,
+      col.names = c("Modèle", "MSE", "R²OOS"),
+      digits    = c(0, 2, 4),
+      align     = c("l", "r", "r"),
+      booktabs  = TRUE)
+```
+
+Le MSE (Mean Squared Error) mesure l'erreur quadratique moyenne entre les prévisions et les valeurs réalisées. Plus il est faible, meilleure est la prévision. Le R²OOS compare le MSE du modèle évalué à celui de la méthode Naïve, prise comme référence :
+
+$$R^2_{OOS} = 1 - \frac{MSE_{\text{modèle}}}{MSE_{\text{naïve}}}$$
+
+Un R²OOS positif signifie que le modèle fait mieux que la méthode Naïve. Un R²OOS négatif signifie au contraire que le modèle est moins précis que la méthode Naïve. Le tableau présente le classement des modèles par MSE croissant. Les modèles avec un R²OOS négatif ont été pénalisés par le Level Shift de janvier 2025, choc difficile à anticiper qui a trop fortement contrarié leurs prévisions haussières.
+
+## Graphique CSPE
+
+```{r}
+#| label: fig-cspe
+#| fig-cap: "Erreur quadratique cumulée (CSPE) par modèle sur l'année 2025. La méthode Naïve est exclue pour ne pas écraser l'échelle."
+#| fig-align: center
+#| out-width: "92%"
+
+ggplot(cspe_long, aes(x = Date, y = CSPE, color = .data[["Modèle"]])) +
+  geom_line(linewidth = 1) +
+  labs(
+    title    = "Erreur Quadratique Cumulative (CSPE) sur 2025",
+    subtitle = "Courbe la plus basse en décembre = meilleur modèle hors-échantillon",
+    x        = "Mois de l'année 2025",
+    y        = "Erreur cumulée (CSPE)",
+    color    = "Modèle"
+  ) +
+  scale_color_manual(values = couleurs_test) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(color = "black", face = "bold"),
+    legend.title = element_blank(),
+    axis.text.x  = element_text(angle = 45, hjust = 1)
+  )
+```
+
+Le graphique des CSPE représente l'accumulation des erreurs au carré au fil des 12 mois de test. Contrairement au MSE qui donne un bilan agrégé, les CSPE permettent de voir précisément à quel moment chaque modèle commence à dérocher et si les erreurs sont concentrées sur certains mois ou bien réparties sur l'année.
+
+Dès janvier 2025, une première séparation entre les modèles est visible. Les modèles qui n'anticipaient pas la baisse de niveau voient leurs erreurs augmenter fortement dès le début. À l'inverse, les modèles qui s'approchent rapidement du niveau réel maintiennent des CSPE faibles sur toute l'année. Le modèle STS présente généralement les CSPE les plus élevées, car il réagit lentement aux chocs. Les modèles SARIMA, ADAM ETS et ETS tendent à conserver des CSPE faibles et proches tout au long de l'année.
+
+\newpage
+
+# Partie 5 — Test de précision de Diebold-Mariano
+
+Le test de Diebold et Mariano compare la précision prédictive de deux modèles. Il teste l'hypothèse nulle selon laquelle les deux modèles ont une capacité prédictive égale, contre l'hypothèse alternative que l'un d'eux est significativement meilleur.
+
+Dans ce dossier, chaque modèle est comparé à un modèle AR(1) estimé sur la période d'entraînement 2006-2024. Ce choix est légèrement plus exigeant que l'utilisation de la méthode Naïve comme référence, un AR(1) tient compte de l'autocorrélation de premier ordre et produit des prévisions un peu meilleure. Nous utilisons l'option "less", qui teste si le modèle évalué présente une erreur quadratique moyenne significativement inférieure à celle de l'AR(1). Une p-value inférieure à 0,05 indique que le modèle prédit significativement mieux que l'AR(1) au seuil de 5 %.
+
+```{r}
+#| label: tbl-dm
+#| tbl-cap: "Test de Diebold-Mariano — comparaison à l'AR(1) de référence (option less, test sur 2025)"
+
+kable(results_dm,
+      col.names = c("Modèle", "P-value DM"),
+      digits    = c(0, 4),
+      align     = c("l", "r"),
+      booktabs  = TRUE)
+```
+
+Le tableau présente les p-values triées par ordre croissant. Les modèles en tête sont ceux qui parviennent le mieux à battre l'AR(1). Les modèles avec les p-values les plus faibles sont généralement SARIMA, SSARIMA ou ADAM ETS SARIMA. À l'autre extrémité, STS et Holt-Winters tendent à afficher des p-values proches de 0,5, ce qui est cohérent avec leurs CSPE élevées observées à la section précédente.
+
+Il faut interpréter ces résultats avec prudence : l'échantillon de test ne couvre que 12 observations. Ces résultats sont donc indicatifs et doivent être mis en regard du classement par MSE (section 4.1) et par AIC/AICc (section 2.2).
+
+\newpage
+
+# Partie 6 — Bonus : prévision à 1 pas sur 2025
+
+Pour évaluer la qualité prédictive du modèle SARIMA en conditions réelles, nous avons mis en place une procédure de prévision glissante à 1 pas sur l'ensemble de l'année 2025. Le modèle est réestimé chaque mois en n'utilisant que les données disponibles jusqu'à cette date, puis une prévision est produite pour le mois suivant. Aucune information future n'est utilisée.
+
+```{r fig-rolling}
+#| label: fig-rolling
+#| fig-cap: "SARIMA glissant à 1 pas vs valeurs réalisées (2025)"
+#| fig-align: center
+#| out-width: "92%"
+
+valeurs_reelles <- window(serie_adj, start = c(2025, 1), end = c(2025, 12))
+dates_2025      <- seq(as.Date("2025-01-01"), by = "month", length.out = 12)
+
+df_final <- data.frame(
+  Date             = dates_2025,
+  Prévision_SARIMA = format_rolling,
+  Réalité          = as.numeric(valeurs_reelles)
+)
+
+df_final_long <- tidyr::pivot_longer(df_final, -Date,
+                                     names_to  = "Série",
+                                     values_to = "Valeur")
+
+ggplot(df_final_long, aes(x = Date, y = Valeur, color = Série)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = c("Prévision_SARIMA" = "orchid",
+                                "Réalité"          = "mediumaquamarine")) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  labs(
+    title    = "SARIMA glissant vs Réalité (2025)",
+    subtitle = "Prévision à 1 mois, modèle réestimé chaque mois",
+    x        = NULL,
+    y        = "Millions de dollars"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        axis.text.x     = element_text(angle = 45, hjust = 1))
+```
+
+La prévision glissante suit globalement les valeurs réalisées. L'écart le plus important se concentre en janvier 2025, où le modèle n'avait pas anticipé le Level Shift négatif identifié dans la partie 1. À partir du printemps, une fois ce choc intégré dans l'historique du modèle, les écarts diminuent sensiblement. Sur la seconde moitié de l'année, les prévisions et les valeurs réalisées sont très proches, ce qui confirme la bonne capacité du SARIMA à prévoir à court terme sur une série saisonnière stable. Le tableau détaillé des écarts mensuels est disponible en annexe (tableau B2).
+
+\newpage
+
+# Conclusion
+
+Ce dossier a porté sur l'analyse et la prévision des ventes mensuelles de boissons alcoolisées aux États-Unis sur vingt ans (2006-2025). Plusieurs enseignements principaux se dégagent de notre travail.
+
+La série est structurée par une tendance haussière marquée et une saisonnalité très régulière, avec un pic de décembre dominant. Le schéma de décomposition multiplicatif s'impose naturellement, la saisonnalité croissant proportionnellement au niveau général de la série. Cette régularité saisonnière constitue un terrain favorable pour les modèles de prévision.
+
+Les principaux facteurs de difficulté sont les chocs exogènes. Les Level Shifts de 2020 liés à la pandémie et le retournement de janvier 2025 n'ont pu être anticipés par aucun modèle, car ils résultent de facteurs extérieurs à la dynamique passée de la série. L'essentiel de l'erreur de prévision hors échantillon provient de ces ruptures.
+
+Sur le critère AIC/AICc, le meilleur modèle au sens de l'ajustement en échantillon est celui qui figure en tête du tableau comparatif de la partie 2. Sur le critère hors échantillon — MSE et R²OOS (partie 4) — les modèles les mieux classés sont ceux qui ont le plus rapidement absorbé le choc de janvier 2025. Le test de Diebold-Mariano (partie 5) confirme que les modèles SARIMA, SSARIMA et ADAM ETS SARIMA surpassent significativement l'AR(1) de référence, tandis que STS et Holt-Winters restent statistiquement indistinguables de ce benchmark.
+
+Si les trois classements — AIC, MSE et Diebold-Mariano — convergent vers le même modèle, ce dernier constitue le choix naturel pour une prévision opérationnelle sur cet horizon.
+
+\newpage
+
+# Annexe
+
+## A1 — Série avec points atypiques identifiés
+
+```{r fig-ann-outliers}
+#| label: fig-ann-outliers
+#| fig-cap: "Série observée avec les points atypiques identifiés (méthode Chen & Liu 1993)"
+#| fig-align: center
+#| out-width: "85%"
+
+plot(fit_outliers)
+```
+
+## A2 — Box-plot de la série corrigée
+
+```{r fig-ann-boxplot}
+#| label: fig-ann-boxplot
+#| fig-cap: "Box-plot de la série corrigée des points atypiques"
+#| fig-align: center
+#| out-width: "60%"
+
+df_box <- tibble::tibble(value = serie_vec)
+ggplot(df_box, aes(y = value)) +
+  geom_boxplot(fill = "royalblue", alpha = 0.5, outlier.colour = "red") +
+  labs(title = "Boxplot de la série corrigée", y = "Millions de dollars") +
+  theme_minimal()
+```
+
+## A3 à A13 — Prévisions individuelles par modèle
+
+```{r fig-ann-naive}
+#| label: fig-ann-naive
+#| fig-cap: "A3 — Prévision Naïve (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_naive, main = "Prévision : Méthode Naïve",
+     ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_naive$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_naive$mean[1]), col = "blue")
+```
+
+```{r fig-ann-x13}
+#| label: fig-ann-x13
+#| fig-cap: "A4 — Prévisions X13-ARIMA-SEATS (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+dates_x13 <- seq(as.Date("2026-01-01"), by = "month", length.out = 12)
+df_x13 <- data.frame(Date = dates_x13, Prévision = as.numeric(prev_x13[1:12]))
+ggplot(df_x13, aes(x = Date, y = Prévision)) +
+  geom_line(color = "darkred", linewidth = 1) + geom_point(color = "darkred", size = 2) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  labs(title = "X13-ARIMA-SEATS (2026)", y = "Millions de dollars", x = NULL) +
+  theme_minimal(base_size = 10) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r fig-ann-stl}
+#| label: fig-ann-stl
+#| fig-cap: "A5 — Prévision STL (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_stl, main = "Prévision : STL", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_stl$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_stl$mean[1]), col = "blue")
+```
+
+```{r fig-ann-sts}
+#| label: fig-ann-sts
+#| fig-cap: "A6 — Prévision STS (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_sts, main = "Prévision : STS", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_sts$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_sts$mean[1]), col = "blue", lwd = 2)
+```
+
+```{r fig-ann-hw}
+#| label: fig-ann-hw
+#| fig-cap: "A7 — Prévision Holt-Winters multiplicatif (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_hw, main = "Prévision : Holt-Winters", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_hw$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_hw$mean[1]), col = "blue")
+```
+
+```{r fig-ann-ets}
+#| label: fig-ann-ets
+#| fig-cap: "A8 — Prévision ETS (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_ets, main = "Prévision : ETS", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_ets$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_ets$mean[1]), col = "blue")
+```
+
+```{r fig-ann-tbats}
+#| label: fig-ann-tbats
+#| fig-cap: "A9 — Prévision TBATS (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_tbats, main = "Prévision : TBATS", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_tbats$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_tbats$mean[1]), col = "blue")
+```
+
+```{r fig-ann-adam1}
+#| label: fig-ann-adam1
+#| fig-cap: "A10 — Prévision ADAM ETS (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_adam1, main = "Prévision : ADAM ETS", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_adam1$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_adam1$mean[1]), col = "blue")
+```
+
+```{r fig-ann-adam2}
+#| label: fig-ann-adam2
+#| fig-cap: "A11 — Prévision ADAM ETS SARIMA (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_adam2, main = "Prévision : ADAM ETS SARIMA", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_adam2$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_adam2$mean[1]), col = "blue")
+```
+
+```{r fig-ann-ssarima}
+#| label: fig-ann-ssarima
+#| fig-cap: "A12 — Prévision SSARIMA (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_ssarima, main = "Prévision : SSARIMA", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_ssarima$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_ssarima$mean[1]), col = "blue")
+```
+
+```{r fig-ann-sarima}
+#| label: fig-ann-sarima
+#| fig-cap: "A13 — Prévision SARIMA (2026)"
+#| fig-align: center
+#| out-width: "80%"
+
+plot(prev_sarima, main = "Prévision : SARIMA", ylab = "Millions de dollars", xlab = "Année")
+lines(c(time(serie_adj)[length(serie_adj)], time(prev_sarima$mean)[1]),
+      c(serie_adj[length(serie_adj)], prev_sarima$mean[1]), col = "blue")
+```
+
+## B1 et B2 — Tableaux complémentaires
+
+```{r tbl-ann-adam1}
+#| label: tbl-ann-adam1
+#| tbl-cap: "B1 — Paramètres de lissage estimés — ADAM ETS"
+
+adam1_params <- tryCatch({
+  p <- fit_adam1$B
+  data.frame(Paramètre = names(p), Valeur = round(as.numeric(p), 4))
+}, error = function(e) {
+  data.frame(Paramètre = "Voir sortie R", Valeur = NA)
+})
+kable(adam1_params, col.names = c("Paramètre", "Valeur estimée"),
+      align = c("l", "r"), booktabs = TRUE)
+```
+
+```{r tbl-ann-rolling}
+#| label: tbl-ann-rolling
+#| tbl-cap: "B2 — Prévision SARIMA glissante vs valeurs réalisées — écarts mensuels (2025)"
+
+df_ecarts <- data.frame(
+  Mois      = format(dates_2025, "%B %Y"),
+  Prévision = round(format_rolling, 0),
+  Réalisé   = round(as.numeric(valeurs_reelles), 0),
+  Écart     = round(format_rolling - as.numeric(valeurs_reelles), 0)
+)
+kable(df_ecarts,
+      col.names = c("Mois", "Prévision (M$)", "Réalisé (M$)", "Écart (M$)"),
+      align     = c("l", "r", "r", "r"),
+      booktabs  = TRUE)
+```
