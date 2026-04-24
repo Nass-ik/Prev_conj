@@ -232,7 +232,7 @@ La composante tendancielle est régulièrement croissante sur l'ensemble de la p
 
 # Partie 2 — Estimation des modèles de prévision
 
-Onze modèles ont été estimés sur la série corrigée (janvier 2006 — décembre 2025) pour produire des prévisions sur l'horizon 2026. Les graphiques individuels de chaque modèle sont disponibles en annexe (figures A3 à A13).
+Onze modèles ont été estimés sur la série corrigée (janvier 2006 à décembre 2025) pour produire des prévisions sur l'horizon 2026. Les graphiques individuels de chaque modèle sont disponibles en annexe (figures A3 à A13).
 
 ## Méthodes de référence : Naïve, X13-ARIMA-SEATS, STL et STS
 
@@ -257,7 +257,7 @@ kable(variances_sts,
       align = c("l", "r"), booktabs = TRUE)
 ```
 
-La variance du niveau (level) est quasi nulle, ce qui signifie que le niveau de la série est pratiquement stable. La variance de la pente (slope) est très faible, montrant que la tendance évolue lentement dans le temps. La saisonnalité (seas) est régulière et stable d'une année sur l'autre, avec une variance très faible. Enfin, la variance des erreurs résiduelles (epsilon) est également très faible, indiquant que le modèle explique bien la dynamique passée de la série. En contrepartie, cette stabilité structurelle peut pénaliser le modèle face à un choc exogène comme le Level Shift de janvier 2025, auquel il réagit lentement.
+La variance de la pente (slope = 9.37) est quasi nulle, ce qui signifie que la tendance évolue de façon très lente et stable dans le temps. La variance du niveau (level = 923.18) est modérée, indiquant que le niveau de la série fluctue autour d'une valeur centrale sans dérive marquée. La saisonnalité (seas = 11 700.99) présente de loin la variance la plus élevée, ce qui confirme que c'est la composante dominante de la série, cohérent avec les résultats de la partie 1. Enfin, la variance des erreurs résiduelles (epsilon = 973.15) reste contenue, indiquant que le modèle capture correctement la dynamique passée. En contrepartie, cette stabilité structurelle peut pénaliser le modèle face à un choc exogène comme le Level Shift de janvier 2025, auquel il réagit lentement.
 
 ## Méthodes de lissage exponentiel : Holt-Winters, ETS, TBATS, ADAM ETS, ADAM ETS SARIMA et SSARIMA
 
@@ -283,7 +283,14 @@ hw_beta  <- round(prev_hw$model$par["beta"],  4)
 hw_gamma <- round(prev_hw$model$par["gamma"], 2)
 ```
 
-Le paramètre alpha (`r hw_alpha`) est élevé, ce qui signifie que le modèle accorde un fort poids aux observations récentes. Cela est cohérent avec une série qui a connu des ruptures marquées (COVID, janvier 2025) : le modèle s'adapte rapidement aux nouvelles données. Beta est très faible (`r hw_beta`), indiquant que la tendance évolue lentement dans le temps. Gamma (`r hw_gamma`) reflète une saisonnalité moyennement réactive. On retrouve dans les prévisions une hausse en été et un pic en décembre, ce qui confirme le schéma saisonnier identifié dans la partie 1.
+Le paramètre alpha (`r hw_alpha`) est modéré à faible, ce qui signifie que le modèle lisse
+fortement la série en accordant un poids significatif aux observations passées plutôt qu'aux
+seules données récentes. Beta est très faible (`r hw_beta`), indiquant que la tendance évolue
+de façon très lente et stable dans le temps. Gamma (`r hw_gamma`) est quasi nul, reflétant
+une saisonnalité très peu réactive : les coefficients saisonniers sont pratiquement figés et
+ne se mettent à jour que marginalement à chaque nouvelle observation. On retrouve dans les
+prévisions une hausse en été et un pic en décembre, ce qui confirme le schéma saisonnier
+identifié dans la partie 1.
 
 ```{r include=FALSE}
 modele_ets_str <- fit_ets$method
@@ -306,16 +313,35 @@ kable(params_ets_df, col.names = c("Paramètre", "Valeur estimée"),
       align = c("l", "r"), booktabs = TRUE)
 ```
 
-Le paramètre phi (`r ets_phi`) est proche de 1, ce qui signifie que la tendance est légèrement amortie mais reste active sur tout l'horizon de prévision. Alpha (`r ets_alpha`) utilise à la fois les valeurs passées et récentes pour le lissage, sans surpondérer les dernières observations. Les prévisions ETS sont stables, avec un profil saisonnier régulier et une tendance qui s'atténue progressivement sur les 12 mois.
+Le paramètre phi (`r ets_phi`) est proche de 1, ce qui signifie que la tendance est légèrement
+amortie mais reste active sur tout l'horizon de prévision. Alpha (`r ets_alpha`) est faible,
+indiquant que le modèle lisse fortement la série sans surpondérer les observations récentes.
+Les coefficients saisonniers révèlent une forte hétérogénéité : le pic de décembre (s0 = 1.34)
+est de loin le plus élevé, confirmant le schéma identifié en partie 1, tandis que le creux
+hivernal (s10 = 0.85) correspond aux mois de faible consommation. Les prévisions ETS sont
+stables, avec un profil saisonnier régulier et une tendance qui s'atténue progressivement sur
+les 12 mois.
 
-**TBATS.** Le modèle utilise une saisonnalité trigonométrique, ce qui lui permet d'adapter la forme des cycles saisonniers de manière flexible. Les intervalles de confiance sont plus étroits que ceux d'ETS, reflétant une meilleure adaptation aux régularités de la série. Les prévisions montrent une hausse en été et un pic en décembre, en cohérence avec les autres modèles.
+**TBATS.** Le modèle utilise une saisonnalité trigonométrique, ce qui lui permet d'adapter la
+forme des cycles saisonniers de manière flexible. Les prévisions montrent une hausse en été et
+un pic en décembre, en cohérence avec les autres modèles.
 
-**ADAM ETS.** Le modèle sélectionné avec saisonnalité forcée produit des prévisions très proches de celles d'ETS. Le paramètre alpha est très faible, traduisant une réactivité limitée aux données les plus récentes ; beta et phi proches de 1 confirment une tendance lentement croissante mais amortie. Les prévisions sont stables, avec une structure saisonnière modérée et un niveau relativement constant d'un mois sur l'autre. Les paramètres complets sont disponibles en annexe (tableau B1).
+**ADAM ETS.** Le modèle sélectionné avec saisonnalité forcée produit des prévisions très proches
+de celles d'ETS. Le paramètre alpha est très faible, traduisant une réactivité limitée aux données
+les plus récentes. Les prévisions sont stables, avec une structure saisonnière modérée et un niveau
+relativement constant d'un mois sur l'autre. Les paramètres complets sont disponibles en annexe
+(tableau B1).
 
-**ADAM ETS SARIMA.** Ce modèle combine la structure ETS avec une partie SARIMA saisonnière d'ordre 12, ce qui lui permet de capter à la fois les autocorrélations de court terme et la dépendance saisonnière annuelle. Il dispose d'un nombre de paramètres plus élevé, ce qui lui confère une richesse supplémentaire mais aussi un risque plus élevé de surajustement.
+**ADAM ETS SARIMA.** Ce modèle combine la structure ETS avec une partie SARIMA saisonnière
+d'ordre 12, ce qui lui permet de capter à la fois les autocorrélations de court terme et la
+dépendance saisonnière annuelle. Il dispose d'un nombre de paramètres plus élevé, ce qui lui
+confère une richesse supplémentaire mais aussi un risque plus élevé de surajustement.
 
-**SSARIMA.** Les prévisions sont quasi identiques à celles de SARIMA sur l'horizon de 12 mois. Les lags saisonniers d'ordre 12 ont des coefficients significatifs, confirmant la forte dépendance saisonnière annuelle de la série. Les intervalles de confiance sont étroits, ce qui indique un modèle relativement précis à court terme.
-
+**SSARIMA.** Les prévisions sont quasi identiques à celles de SARIMA sur l'horizon de 12 mois,
+ce qui s'explique par le fait que les deux modèles partagent la même structure ARIMA sous-jacente.
+Les lags saisonniers d'ordre 12 ont des coefficients significatifs, confirmant la forte dépendance
+saisonnière annuelle de la série. Les intervalles de confiance sont étroits, ce qui indique un
+modèle relativement précis à court terme.
 ## Modèle SARIMA
 
 ```{r include=FALSE}
@@ -338,7 +364,8 @@ kable(coef_sarima, col.names = c("Coefficient", "Valeur estimée"),
       align = c("l", "r"), booktabs = TRUE)
 ```
 
-Le modèle intègre une différenciation ordinaire (d = 1) et une différenciation saisonnière (D = 1), traduisant la non-stationnarité de la série en tendance et en saisonnalité. Le coefficient saisonnier (sma1) est significatif et élevé en valeur absolue, ce qui indique une forte correction des erreurs décalées de 12 mois et une forte dépendance saisonnière des résidus. Les intervalles de confiance des prévisions sont étroits, signe d'une bonne précision estimée sur l'horizon de 12 mois.
+Le modèle identifié automatiquement est ARIMA(3,0,2)(0,1,1)[12]. Il n'intègre pas de différenciation ordinaire (d = 0), ce qui indique que la série corrigée des outliers est déjà stationnaire en niveau. En revanche, une différenciation saisonnière (D = 1) est nécessaire, traduisant une non-stationnarité saisonnière persistante. La présence d'un drift (11.11) capte la légère tendance haussière de long terme de la série. La partie autorégressive d'ordre 3 (ar1, ar2, ar3) traduit une dépendance aux trois mois précédents, tandis que la partie moyenne mobile (ma1, ma2) corrige les erreurs de court terme. Le coefficient saisonnier (sma1 = −0.39) est significatif et indique une forte correction des erreurs décalées de 12 mois, confirmant la dépendance saisonnière annuelle de la série. Les intervalles de confiance des prévisions sont étroits, signe d'une bonne précision estimée sur l'horizon de 12 mois.
+
 
 ## Tableau comparatif AIC / AICc
 
@@ -385,9 +412,9 @@ ggplot(df_long, aes(x = Date, y = Valeur, color = Méthode)) +
   )
 ```
 
-L'ensemble des modèles s'accorde sur la forme générale de la saisonnalité 2026 : un creux en janvier-février, une légère reprise estivale et un pic en décembre. Les divergences portent sur le niveau des prévisions. Les modèles à tendance forte comme STS et Holt-Winters projettent les ventes les plus élevées. Les modèles plus prudents — SARIMA, ETS, ADAM ETS — convergent vers un niveau intermédiaire. La méthode Naïve en noir forme la borne inférieure du faisceau, sans aucune tendance haussière.
+L'ensemble des modèles s'accorde sur la forme générale de la saisonnalité 2026 : un creux en janvier-février, une remontée progressive au printemps, une légère reprise estivale et un pic marqué en décembre. Les divergences portent essentiellement sur le niveau des prévisions en fin d'année. Les modèles ADAM SARIMA et X13-ARIMA projettent les ventes les plus élevées en décembre 2026. Les modèles plus prudents tel que SARIMA, ETS, ADAM ETS, STL convergent vers un niveau intermédiaire. La méthode Naïve forme la borne supérieure du faisceau sur la quasi-totalité de l'horizon, car elle reproduit directement les valeurs de 2025 qui incluaient un pic de décembre particulièrement élevé.
 
-La dispersion entre les prévisions de décembre est particulièrement visible : elle traduit l'incertitude sur le niveau de la tendance pour 2026, après le Level Shift négatif de janvier 2025. Les modèles qui ont le mieux absorbé ce choc sur la période de test tendent à projeter des niveaux plus modérés.
+La dispersion entre les prévisions de décembre est particulièrement visible : elle traduit l'incertitude sur le niveau de la tendance pour 2026, après le Level Shift négatif de janvier 2025. Les modèles qui ont le mieux absorbé ce choc tendent à projeter des niveaux plus modérés.
 
 ## Confrontation des modèles aux valeurs réalisées 2025
 
@@ -447,7 +474,7 @@ ggplot(df_confrontation, aes(x = Date, y = Valeur, color = .data[["Modèle"]])) 
   )
 ```
 
-Le graphique met en évidence les différences de comportement des modèles face au choc de janvier 2025. Les modèles à forte tendance haussière (STS, Holt-Winters) surestiment nettement les ventes réalisées sur le premier semestre, car ils prolongent la dynamique pré-2025 sans anticiper la baisse de niveau. À l'inverse, les modèles plus réactifs (SARIMA, ADAM ETS, ETS) se rapprochent davantage de la courbe réalisée. On observe que les écarts sont maximaux en janvier-février 2025, au moment du choc, et se réduisent progressivement sur le reste de l'année au fur et à mesure que les modèles glissants intègrent le nouveau régime de la série.
+Le graphique de confrontation 2025 révèle une forte cohérence entre les modèles : leurs prévisions sont quasi superposées et suivent fidèlement la courbe réalisée sur l'ensemble de l'année. Les écarts restent limités sur la majeure partie de l'horizon, à l'exception de TBATS qui s'écarte sensiblement à la hausse en juillet-août 2025, et de la méthode Naïve (gris) qui, reproduisant mécaniquement le niveau de 2024, surestime les ventes sur l'ensemble de l'année 2025 après le choc de janvier.
 
 \newpage
 
@@ -572,7 +599,7 @@ ggplot(df_final_long, aes(x = Date, y = Valeur, color = Série)) +
         axis.text.x     = element_text(angle = 45, hjust = 1))
 ```
 
-La prévision glissante suit globalement les valeurs réalisées. L'écart le plus important se concentre en janvier 2025, où le modèle n'avait pas anticipé le Level Shift négatif identifié dans la partie 1. À partir du printemps, une fois ce choc intégré dans l'historique du modèle, les écarts diminuent sensiblement. Sur la seconde moitié de l'année, les prévisions et les valeurs réalisées sont très proches, ce qui confirme la bonne capacité du SARIMA à prévoir à court terme sur une série saisonnière stable. Le tableau détaillé des écarts mensuels est disponible en annexe (tableau B2).
+La prévision glissante suit globalement les valeurs réalisées sur l'ensemble de l'année 2025, confirmant la bonne capacité du SARIMA à prévoir à court terme sur une série saisonnière. Les écarts restent limités sur la majeure partie de l'horizon. Le décalage le plus notable s'observe en mai 2025, où le modèle sous-estime légèrement le pic de printemps, ainsi qu'en décembre 2025, où la prévision dépasse légèrement la valeur réalisée. Ces écarts ponctuels restent néanmoins faibles au regard de l'amplitude de la série. Le tableau détaillé des écarts mensuels est disponible en annexe (tableau B2).
 
 \newpage
 
