@@ -94,7 +94,7 @@ ggseasonplot(serie_ts, col = rainbow(20), year.labels = TRUE,
              main = "Graphique saisonnier des ventes d'alcool (2006-2025)")
 ```
 
-En observant de plus près la saisonnalité de la série, on voit nettement un pic récurrent en décembre chaque année, lié aux achats de fin d'année. Un second pic, plus modéré, apparaît en été (juin-juillet). Les creux se produisent systématiquement en janvier et février. Les courbes montent d'année en année, reflet de la tendance haussière de la série : les années récentes (en rouge et rose) sont nettement au-dessus des années 2006-2010 (en bleu-vert). On remarque également un saut visible entre 2019 et 2020, correspondant au choc COVID identifié dans la partie suivante.
+En observant de plus près la saisonnalité de la série, on voit nettement un pic récurrent en décembre chaque année, lié aux achats de fin d’année. Un second pic, plus modéré, apparaît en été (juin-juillet). Les creux se produisent systématiquement en janvier et février. Les courbes montent d’année en année, reflet de la tendance haussière de la série : les années récentes (en violet et rose) sont nettement au-dessus des années 2006-2010 (en rouge, orange et jaune). On remarque également un saut visible entre 2019 et 2020, correspondant au choc COVID identifié dans la partie suivante.
 
 ## Détection des points atypiques
 
@@ -192,13 +192,13 @@ res_seas     <- isSeasonal(serie_adj, test = "combined", freq = 12)
 res_combined <- combined_test(serie_adj)
 ```
 
-Sur le périodogramme de la série en niveau, des pics très nets apparaissent aux fréquences saisonnières. Le pic le plus important correspond à la fréquence 1/12, soit un cycle de 12 mois. D'autres pics harmoniques sont visibles aux fréquences 2/12, 3/12 et 4/12, ce qui montre que les effets saisonniers ont une forme complexe, avec notamment un pic de décembre bien plus fort que les autres mois.
+Sur le périodogramme de la série en niveau, le pic dominant se situe à la fréquence 0, ce qui traduit la forte tendance haussière de la série. Toutefois, des pics très nets apparaissent également aux fréquences saisonnières. Le premier pic saisonnier correspond à la fréquence 1/12, soit un cycle de 12 mois. D’autres pics harmoniques sont visibles aux fréquences 2/12, 3/12 et 4/12, ce qui montre que les effets saisonniers ont une forme complexe, avec notamment un pic de décembre bien plus fort que les autres mois.
 
-Sur la série en différence première, ces pics restent clairement visibles malgré la suppression de la tendance par différenciation. La saisonnalité est donc persistante et ne disparaît pas avec la seule différenciation ordinaire.
+Sur la série en différence première, le pic lié à la tendance a totalement disparu, et les pics saisonniers ressortent encore plus distinctement. La saisonnalité est donc persistante et ne disparaît pas avec la seule différenciation ordinaire.
 
-Les tests formels de saisonnalité confirment ces observations. L'hypothèse nulle d'absence de saisonnalité est rejetée avec une p-value très inférieure au seuil de 5 %. Ces résultats valident le recours à des modèles intégrant explicitement une composante saisonnière.
+Les tests formels de saisonnalité confirment ces observations. L’hypothèse nulle d’absence de saisonnalité est rejetée avec une p-value très inférieure au seuil de 5 %. Ces résultats valident le recours à des modèles intégrant explicitement une composante saisonnière.
 
-L'interprétation économique est directe. Décembre est le mois le plus fort de l'année, alimenté par les achats de cadeaux et les célébrations de fin d'année. Janvier est le mois le plus faible, par effet de rattrapage après les fêtes et par la progression du Dry January. Un second pic, moins marqué, apparaît en été. Cette saisonnalité est stable d'une année sur l'autre, ce qui est un atout pour la prévision.
+L’interprétation économique est directe. Décembre est le mois le plus fort de l’année, alimenté par les achats de cadeaux et les célébrations de fin d’année. Janvier est le mois le plus faible, par effet de rattrapage après les fêtes et par la progression du Dry January. Un second pic, moins marqué, apparaît en été. Cette saisonnalité est stable d’une année sur l’autre, ce qui est un atout pour la prévision.
 
 ## Désaisonnalisation et décomposition X13-ARIMA-SEATS
 
@@ -342,6 +342,7 @@ ce qui s'explique par le fait que les deux modèles partagent la même structure
 Les lags saisonniers d'ordre 12 ont des coefficients significatifs, confirmant la forte dépendance
 saisonnière annuelle de la série. Les intervalles de confiance sont étroits, ce qui indique un
 modèle relativement précis à court terme.
+
 ## Modèle SARIMA
 
 ```{r include=FALSE}
@@ -364,7 +365,7 @@ kable(coef_sarima, col.names = c("Coefficient", "Valeur estimée"),
       align = c("l", "r"), booktabs = TRUE)
 ```
 
-Le modèle identifié automatiquement est ARIMA(3,0,2)(0,1,1)[12]. Il n'intègre pas de différenciation ordinaire (d = 0), ce qui indique que la série corrigée des outliers est déjà stationnaire en niveau. En revanche, une différenciation saisonnière (D = 1) est nécessaire, traduisant une non-stationnarité saisonnière persistante. La présence d'un drift (11.11) capte la légère tendance haussière de long terme de la série. La partie autorégressive d'ordre 3 (ar1, ar2, ar3) traduit une dépendance aux trois mois précédents, tandis que la partie moyenne mobile (ma1, ma2) corrige les erreurs de court terme. Le coefficient saisonnier (sma1 = −0.39) est significatif et indique une forte correction des erreurs décalées de 12 mois, confirmant la dépendance saisonnière annuelle de la série. Les intervalles de confiance des prévisions sont étroits, signe d'une bonne précision estimée sur l'horizon de 12 mois.
+Le modèle identifié automatiquement est ARIMA(3,0,2)(0,1,1)[12]. Il n’intègre pas de différenciation ordinaire (d = 0), ce qui indique que la série corrigée des outliers est déjà stationnaire en niveau. En revanche, une différenciation saisonnière (D = 1) est nécessaire, traduisant une non-stationnarité saisonnière persistante. La présence d’un drift (11.11) capte la légère tendance haussière de long terme de la série. La partie autorégressive d’ordre 3 (ar1, ar2, ar3) traduit une dépendance aux trois mois précédents, tandis que la partie moyenne mobile (ma1, ma2) corrige les erreurs de court terme. Le coefficient saisonnier (sma1 = −0.39) souligne quant à lui une forte correction des erreurs décalées de 12 mois, confirmant la dépendance saisonnière annuelle de la série.
 
 
 ## Tableau comparatif AIC / AICc
@@ -380,7 +381,7 @@ kable(tableau_aic,
       booktabs  = TRUE)
 ```
 
-L'AIC et l'AICc pénalisent la complexité du modèle pour éviter le surajustement. Plus ils sont faibles, meilleur est le modèle au sens du compromis ajustement-parcimonie. Le modèle en tête de tableau est donc celui qui capture le mieux la dynamique de la série tout en restant le plus simple possible. Les modèles avec un grand nombre de paramètres (ADAM ETS SARIMA, SSARIMA) peuvent être pénalisés malgré un bon ajustement brut.
+Le tableau présente le classement des modèles selon le critère d'information AICc (les valeurs les plus faibles indiquant le meilleur ajustement). Le modèle SARIMA se détache très nettement en tête du classement, indiquant qu'il capture le mieux la dynamique de la série sur l'échantillon d'apprentissage. À l'inverse, les méthodes de lissage exponentiel (ETS et Holt-Winters) affichent les scores les moins performants parmi les modèles mesurables. À noter que les critères AIC et AICc ne sont pas calculés (NA) pour certaines méthodes (comme Naïve, X13 ou les modèles de la famille ADAM), ce qui empêche de les inclure dans cette comparaison directe en échantillon.
 
 \newpage
 
@@ -412,7 +413,7 @@ ggplot(df_long, aes(x = Date, y = Valeur, color = Méthode)) +
   )
 ```
 
-L'ensemble des modèles s'accorde sur la forme générale de la saisonnalité 2026 : un creux en janvier-février, une remontée progressive au printemps, une légère reprise estivale et un pic marqué en décembre. Les divergences portent essentiellement sur le niveau des prévisions en fin d'année. Les modèles ADAM SARIMA et X13-ARIMA projettent les ventes les plus élevées en décembre 2026. Les modèles plus prudents tel que SARIMA, ETS, ADAM ETS, STL convergent vers un niveau intermédiaire. La méthode Naïve forme la borne supérieure du faisceau sur la quasi-totalité de l'horizon, car elle reproduit directement les valeurs de 2025 qui incluaient un pic de décembre particulièrement élevé.
+L'ensemble des modèles s'accorde sur la forme générale de la saisonnalité 2026 : un creux en janvier-février, une remontée progressive au printemps, une légère reprise estivale et un pic marqué en décembre. Les divergences portent essentiellement sur le niveau des prévisions en fin d'année. Les modèles TBATS et X13-ARIMA projettent les ventes les plus élevées en décembre 2026. Les modèles plus prudents tel que SARIMA, ETS, ADAM ETS, STL convergent vers un niveau intermédiaire, tandis que le modèle ADAM SARIMA se distingue des autres vers le bas. La méthode Naïve forme la borne supérieure du faisceau sur la quasi-totalité de l'horizon, car elle reproduit directement les valeurs de 2025 qui incluaient un pic de décembre particulièrement élevé.
 
 La dispersion entre les prévisions de décembre est particulièrement visible : elle traduit l'incertitude sur le niveau de la tendance pour 2026, après le Level Shift négatif de janvier 2025. Les modèles qui ont le mieux absorbé ce choc tendent à projeter des niveaux plus modérés.
 
@@ -501,7 +502,7 @@ Le MSE (Mean Squared Error) mesure l'erreur quadratique moyenne entre les prévi
 
 $$R^2_{OOS} = 1 - \frac{MSE_{\text{modèle}}}{MSE_{\text{naïve}}}$$
 
-Un R²OOS positif signifie que le modèle fait mieux que la méthode Naïve. Un R²OOS négatif signifie au contraire que le modèle est moins précis que la méthode Naïve. Le tableau présente le classement des modèles par MSE croissant. Les modèles avec un R²OOS négatif ont été pénalisés par le Level Shift de janvier 2025, choc difficile à anticiper qui a trop fortement contrarié leurs prévisions haussières.
+Un R²OOS positif signifie que le modèle fait mieux que la méthode Naïve. Le tableau présente le classement des modèles par MSE croissant. Ici, on constate que tous les modèles affichent un R²OOS très largement positif (supérieur à 0,99). Cela signifie qu'ils surperforment tous très nettement la méthode Naïve de référence. Néanmoins, les modèles situés en bas du classement (comme TBATS ou Holt-Winters) présentent des MSE plus élevés, indiquant qu'ils ont eu un peu plus de difficultés à absorber le Level Shift de janvier 2025 par rapport aux modèles de tête comme SARIMA et ADAM ETS.
 
 ## Graphique CSPE
 
@@ -530,9 +531,9 @@ ggplot(cspe_long, aes(x = Date, y = CSPE, color = .data[["Modèle"]])) +
   )
 ```
 
-Le graphique des CSPE représente l'accumulation des erreurs au carré au fil des 12 mois de test. Contrairement au MSE qui donne un bilan agrégé, les CSPE permettent de voir précisément à quel moment chaque modèle commence à dérocher et si les erreurs sont concentrées sur certains mois ou bien réparties sur l'année.
+Le graphique des CSPE représente l’accumulation des erreurs au carré au fil des 12 mois de test. Contrairement au MSE qui donne un bilan agrégé, les CSPE permettent de voir précisément à quel moment chaque modèle commence à dérocher et si les erreurs sont concentrées sur certains mois ou bien réparties sur l’année.
 
-Dès janvier 2025, une première séparation entre les modèles est visible. Les modèles qui n'anticipaient pas la baisse de niveau voient leurs erreurs augmenter fortement dès le début. À l'inverse, les modèles qui s'approchent rapidement du niveau réel maintiennent des CSPE faibles sur toute l'année. Le modèle STS présente généralement les CSPE les plus élevées, car il réagit lentement aux chocs. Les modèles SARIMA, ADAM ETS et ETS tendent à conserver des CSPE faibles et proches tout au long de l'année.
+Dès janvier 2025, une première séparation entre les modèles est visible. Les modèles qui n’anticipaient pas la baisse de niveau voient leurs erreurs augmenter fortement dès le début, à l'image du modèle ADAM SARIMA qui accumule rapidement les erreurs sur le premier semestre. De son côté, le modèle TBATS décroche brutalement à partir du mois d'août et termine l'année avec la CSPE la plus élevée. À l’inverse, les modèles qui s’approchent rapidement du niveau réel maintiennent des CSPE faibles sur toute l’année. Les modèles SARIMA, ADAM ETS et ETS tendent à conserver des CSPE faibles et proches tout au long de l’année, confirmant leur bonne capacité prédictive hors échantillon.
 
 \newpage
 
@@ -553,9 +554,9 @@ kable(results_dm,
       booktabs  = TRUE)
 ```
 
-Le tableau présente les p-values triées par ordre croissant. Les modèles en tête sont ceux qui parviennent le mieux à battre l'AR(1). Les modèles avec les p-values les plus faibles sont généralement SARIMA, SSARIMA ou ADAM ETS SARIMA. À l'autre extrémité, STS et Holt-Winters tendent à afficher des p-values proches de 0,5, ce qui est cohérent avec leurs CSPE élevées observées à la section précédente.
+Le tableau présente les p-values triées par ordre croissant. Les modèles en tête sont ceux qui parviennent le mieux à battre l’AR(1). Les modèles avec les p-values les plus faibles sont Holt-Winters, ETS et ADAM ETS. À l’autre extrémité, STL, ADAM SARIMA et SARIMA affichent des p-values de 0,5, ce qui indique qu'ils ne surperforment pas significativement le modèle de référence.
 
-Il faut interpréter ces résultats avec prudence : l'échantillon de test ne couvre que 12 observations. Ces résultats sont donc indicatifs et doivent être mis en regard du classement par MSE (section 4.1) et par AIC/AICc (section 2.2).
+Il faut interpréter ces résultats avec prudence : l’échantillon de test ne couvre que 12 observations. Ces résultats sont donc indicatifs et doivent être mis en regard du classement par MSE (section 4.1) et par AIC/AICc (section 2.2).
 
 \newpage
 
@@ -611,9 +612,9 @@ La série est structurée par une tendance haussière marquée et une saisonnali
 
 Les principaux facteurs de difficulté sont les chocs exogènes. Les Level Shifts de 2020 liés à la pandémie et le retournement de janvier 2025 n'ont pu être anticipés par aucun modèle, car ils résultent de facteurs extérieurs à la dynamique passée de la série. L'essentiel de l'erreur de prévision hors échantillon provient de ces ruptures.
 
-Sur le critère AIC/AICc, le meilleur modèle au sens de l'ajustement en échantillon est celui qui figure en tête du tableau comparatif de la partie 2. Sur le critère hors échantillon — MSE et R²OOS (partie 4) — les modèles les mieux classés sont ceux qui ont le plus rapidement absorbé le choc de janvier 2025. Le test de Diebold-Mariano (partie 5) confirme que les modèles SARIMA, SSARIMA et ADAM ETS SARIMA surpassent significativement l'AR(1) de référence, tandis que STS et Holt-Winters restent statistiquement indistinguables de ce benchmark.
+Sur le critère AIC/AICc, le meilleur modèle au sens de l'ajustement en échantillon est celui qui figure en tête du tableau comparatif de la partie 2. Sur le critère hors échantillon : MSE et R²OOS (partie 4) les modèles les mieux classés sont ceux qui ont le plus rapidement absorbé le choc de janvier 2025. Le test de Diebold-Mariano (partie 5) confirme que les modèles SARIMA, SSARIMA et ADAM ETS SARIMA surpassent significativement l'AR(1) de référence, tandis que STS et Holt-Winters restent statistiquement indistinguables de ce benchmark.
 
-Si les trois classements — AIC, MSE et Diebold-Mariano — convergent vers le même modèle, ce dernier constitue le choix naturel pour une prévision opérationnelle sur cet horizon.
+Si les trois classements : AIC, MSE et Diebold-Mariano convergent vers le même modèle, ce dernier constitue le choix naturel pour une prévision opérationnelle sur cet horizon.
 
 \newpage
 
@@ -644,6 +645,8 @@ ggplot(df_box, aes(y = value)) +
   labs(title = "Boxplot de la série corrigée", y = "Millions de dollars") +
   theme_minimal()
 ```
+
+Note de lecture concernant les graphiques de prévision : Le segment bleu reliant la dernière observation historique (décembre 2025) à la première valeur prévue (janvier 2026) a été tracé pour assurer la continuité visuelle. La séparation stricte de l'échantillon d'apprentissage créant une rupture graphique sur l'axe des abscisses, ce raccordement permet une meilleure lisibilité des trajectoires.
 
 ## A3 à A13 — Prévisions individuelles par modèle
 
